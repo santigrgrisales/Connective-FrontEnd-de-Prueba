@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Consultor Dashboard</title>
+  <style> body{font-family:Arial;padding:20px;} </style>
+</head>
+<body>
+  <h1>Consultor</h1>
+  <p>Bienvenido, esta es la vista del consultor. Aquí puede seleccionar archivos cargados y ver análisis.</p>
+  <p><a href="/" onclick="logout();return false;">Cerrar sesión</a></p>
+
+<script>
+const API_BASE = 'http://localhost:8081'; // AJUSTA si tu backend corre en otro puerto
+
+function logout() {
+  localStorage.removeItem('token');
+  window.location.href = '/';
+}
+
+(async function check() {
+  const token = localStorage.getItem('token');
+  console.log(token);
+
+  if (!token) { window.location.href = '/'; return; }
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) {
+      console.warn('Auth /me responded status:', res.status);
+      localStorage.removeItem('token');
+      window.location.href = '/';
+      return;
+    }
+    const user = await res.json();
+    const roles = (user.roles||[]).map(r=>r.toUpperCase());
+    if (!roles.some(r => r.includes('CONSULTOR'))) {
+      localStorage.removeItem('token');
+      window.location.href = '/';
+    }
+  } catch (e) {
+    console.error('Error validating session:', e);
+    localStorage.removeItem('token');
+    window.location.href = '/';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Mapa — Análisis por Región</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+
+  <style>
+    html,body { height:100%; margin:0; font-family: Arial, sans-serif; }
+    #app { display:flex; height:100vh; }
+    #map { flex:1; height:100%; }
+    #sidebar { width:380px; background:#fff; border-left:1px solid #e6e6e6; padding:16px; box-sizing:border-box; overflow:auto; }
+    .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    h2 { margin:0; font-size:18px; }
+    .small { font-size:13px; color:#666; }
+    .legend { background:white; padding:8px; border-radius:6px; box-shadow:0 1px 6px rgba(0,0,0,0.08); margin-top:12px; }
+    .legend-item { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:13px; }
+    .color-box { width:20px; height:14px; border-radius:2px; display:inline-block; }
+    .controls { margin-top:8px; }
+    label { display:block; margin-top:8px; font-size:13px; color:#333; }
+    select,input { width:100%; padding:8px; border-radius:6px; border:1px solid #dfe3ea; box-sizing:border-box; margin-top:4px; }
+    button { padding:8px 10px; border-radius:6px; border:0; background:#2b7cff; color:#fff; cursor:pointer; margin-top:8px; width:100%; }
+    #regionDetail { margin-top:12px; }
+    .muted { color:#666; font-size:13px; }
+    pre { white-space: pre-wrap; word-break: break-word; background:#f7f8fa; padding:8px; border-radius:6px; font-size:13px; }
+    .stat { margin:6px 0; font-size:14px; }
+    .chart-canvas { width:100%; height:160px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+
+    <div id="sidebar">
+      <div class="header">
+        <div>
+          <h2>Map Analysis — Brecha Digital</h2>
+          <div class="small">Archivo: <span id="archivoId">-</span></div>
+        </div>
+        <div>
+          <div id="userEmail" class="small"></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="small">Filtros globales (se aplican al cargar/actualizar mapa)</div>
+
+        <label for="fEdad">Edad</label>
+        <select id="fEdad">
+          <option value="">Todas</option>
+          <option value="5-14">5-14</option>
+          <option value="15-24">15-24</option>
+          <option value="25-60">25-60</option>
+          <option value="mayores_60">>60</option>
+        </select>
+
+        <label for="fGenero">Género</label>
+        <select id="fGenero">
+          <option value="">Todos</option>
+          <option value="Mujer">Mujer</option>
+          <option value="Hombre">Hombre</option>
+        </select>
+
+        <label for="fIngreso">Ingreso (modal)</label>
+        <select id="fIngreso">
+          <option value="">Todos</option>
+          <option value="Bajo">Bajo</option>
+          <option value="Medio">Medio</option>
+          <option value="Alto">Alto</option>
+        </select>
+
+        <label for="fTipoUso">Tipo de uso (ejemplo)</label>
+        <select id="fTipoUso">
+          <option value="">Todos</option>
+          <option value="Desarrollo">Desarrollo</option>
+          <option value="Entretenimiento">Entretenimiento</option>
+          <option value="Comunicación">Comunicación</option>
+        </select>
+
+        <label for="fCalidad">Calidad servicio</label>
+        <select id="fCalidad">
+          <option value="">Todos</option>
+          <option value="Alta">Alta</option>
+          <option value="Media">Media</option>
+          <option value="Baja">Baja</option>
+        </select>
+
+        <label for="fMinHabs">Min. índice habilidades (>=)</label>
+        <input id="fMinHabs" type="number" min="0" step="0.1" placeholder="ej: 1.5" />
+
+        <label style="margin-top:8px;"><input id="fBarreraCosto" type="checkbox" /> Solo barrera costo</label>
+
+        <button id="refreshBtn">Aplicar filtros y refrescar mapa</button>
+      </div>
+
+      <div class="legend" id="legendContainer">
+        <strong>Leyenda — Índice de desarrollo (quantiles)</strong>
+        <div id="legendItems"></div>
+      </div>
+
+      <div id="regionDetail">
+        <h3>Detalle región</h3>
+        <div id="detailContent" class="muted">Haz clic en un departamento para ver detalle.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet + Chart.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+/* CONFIG - ajusta si es necesario */
+const API_BASE = 'http://localhost:8081'; // confirmado por ti
+const GEOJSON_FILENAME = 'colombia_departments.geojson';
+const GEOJSON_URL = `${API_BASE}/${GEOJSON_FILENAME}`;
+const BUCKETS = 5; // número de colores/quantiles
+const PALETTE = ['#fee5d9','#fcae91','#fb6a4a','#de2d26','#a50f15']; // perceptible y atractivo (rojos)
+const token = localStorage.getItem('token');
+const params = new URLSearchParams(window.location.search);
+const archivoId = params.get('id');
+document.getElementById('archivoId').innerText = archivoId || '(ninguno)';
+if (!token) { alert('No autorizado. Inicia sesión.'); window.location.href = '/'; }
+
+/* Inicializa mapa */
+const map = L.map('map', { minZoom: 4 }).setView([4.0, -72.0], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+/* Globals */
+let geojsonLayer = null;
+let metricsByName = new Map(); // normalizedName -> { ...metricFields }
+let metricValues = []; // array numeric for quantiles
+let currentBreaks = [];
+
+/* UTIL: normalize strings (remove accents, lower, keep letters/digits/spaces) */
+function normalizeName(s) {
+  if (s == null) return null;
+  // remove diacritics
+  const noDiacritics = s.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  return noDiacritics.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g,' ').trim();
+}
+
+/* Build query params from UI filters */
+function buildFilterParams() {
+  const p = new URLSearchParams();
+  const edad = document.getElementById('fEdad').value;
+  const genero = document.getElementById('fGenero').value;
+  const ingreso = document.getElementById('fIngreso').value;
+  const tipoUso = document.getElementById('fTipoUso').value;
+  const calidad = document.getElementById('fCalidad').value;
+  const minHabs = document.getElementById('fMinHabs').value;
+  const onlyBarrera = document.getElementById('fBarreraCosto').checked;
+
+  if (edad) p.set('edad', edad);
+  if (genero) p.set('genero', genero);
+  if (ingreso) p.set('ingresoCategoria', ingreso);
+  if (tipoUso) p.set('tipoUso', tipoUso);
+  if (calidad) p.set('calidadServicio', calidad);
+  if (minHabs) p.set('minIndiceHabilidades', minHabs);
+  if (onlyBarrera) p.set('onlyBarreraCosto', 'true');
+
+  return p.toString() ? ('?' + p.toString()) : '';
+}
+
+/* Quantiles helper: returns array of breakpoints (upper bounds) of length buckets */
+function computeQuantileBreaks(values, buckets) {
+  if (!values.length) return Array(buckets).fill(0);
+  const sorted = values.slice().filter(v => v !== null && !isNaN(v)).sort((a,b)=>a-b);
+  if (sorted.length === 0) return Array(buckets).fill(0);
+  const breaks = [];
+  for (let i=1;i<=buckets;i++) {
+    const q = i / buckets;
+    const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length) - 1);
+    const val = sorted[Math.max(0, idx)];
+    breaks.push(Number(val));
+  }
+  // ensure strictly increasing
+  for (let i=1;i<breaks.length;i++) if (breaks[i] <= breaks[i-1]) breaks[i] = breaks[i-1] + 1e-6;
+  return breaks;
+}
+
+/* color picker by quantile */
+function getColorForValue(v, breaks) {
+  if (v === null || v === undefined || isNaN(v)) return '#ddd';
+  for (let i=0;i<breaks.length;i++) if (v <= breaks[i]) return PALETTE[i];
+  return PALETTE[PALETTE.length-1];
+}
+
+/* Build metrics map by normalized name */
+function ingestMetrics(metricsArray) {
+  metricsByName = new Map();
+  metricValues = [];
+  if (!Array.isArray(metricsArray)) return;
+  for (const m of metricsArray) {
+    const name = m.nameRegion || m.name || m.nombre || m.regionName;
+    if (!name) continue;
+    const n = normalizeName(name);
+    metricsByName.set(n, m); // store whole object
+    // for color scale use your chosen field: indiceDesarrollo
+    if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
+      metricValues.push(Number(m.indiceDesarrollo));
+    } else if (m.value !== undefined) {
+      metricValues.push(Number(m.value));
+    }
+  }
+}
+
+/* Style function */
+function styleFeature(feature) {
+  const deName = (feature.properties && (feature.properties.DeNombre || feature.properties.DeNombredeleterename || feature.properties.NOMBRE)) || null;
+  const normalized = normalizeName(deName);
+  const metric = metricsByName.get(normalized);
+  const v = metric ? (metric.indiceDesarrollo !== undefined ? Number(metric.indiceDesarrollo) : (metric.value !== undefined ? Number(metric.value) : null)) : null;
+  const fill = getColorForValue(v, currentBreaks);
+  return { weight:1, color:'#333', fillColor: fill, fillOpacity: (v===null ? 0.3 : 0.85) };
+}
+
+/* interactions */
+function highlightFeature(e) {
+  const layer = e.target;
+  layer.setStyle({ weight:2, color:'#000', fillOpacity:1 });
+  if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) layer.bringToFront();
+  const f = layer.feature;
+  const deName = (f.properties && (f.properties.DeNombre || f.properties.DeNombredeleterename || f.properties.NOMBRE)) || 'Región';
+  const metric = metricsByName.get(normalizeName(deName));
+  const val = metric && metric.indiceDesarrollo !== undefined ? metric.indiceDesarrollo : (metric && metric.value !== undefined ? metric.value : null);
+  layer.bindTooltip(`${deName}<br>Índice: ${val !== null ? Number(val).toFixed(3) : 'N/A'}`).openTooltip();
+}
+function resetHighlight(e) { if (geojsonLayer) geojsonLayer.resetStyle(e.target); try{ e.target.closeTooltip(); } catch(e){}; }
+async function onFeatureClick(e) {
+  const feature = e.target.feature;
+  // zoom to bounds smoothly
+  try {
+    map.flyToBounds(e.target.getBounds(), { duration: 0.6 });
+  } catch(_) {}
+  // request region detail using backend id: try to get metric via name match and use idRegion if present
+  const deName = (feature.properties && (feature.properties.DeNombre || feature.properties.DeNombredeleterename || feature.properties.NOMBRE)) || null;
+  const metric = metricsByName.get(normalizeName(deName));
+  if (!metric) {
+    document.getElementById('detailContent').innerText = 'No hay datos para esta región.';
+    return;
+  }
+  const idRegion = metric.idRegion || metric.idRegion || metric.regionId || metric.id || metric.id_region;
+  // call backend /regions/{idRegion} with same filters
+  const q = buildFilterParams();
+  try {
+    const res = await fetch(`${API_BASE}/api/archivos2/${archivoId}/regions/${idRegion}${q}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) {
+      document.getElementById('detailContent').innerText = `Error ${res.status} obteniendo detalle.`;
+      return;
+    }
+    const detail = await res.json();
+    renderRegionDetail(feature, metric, detail);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('detailContent').innerText = 'Error al obtener detalle: ' + err.message;
+  }
+}
+
+/* onEachFeature */
+function onEachFeature(feature, layer) {
+  layer.on({ mouseover: highlightFeature, mouseout: resetHighlight, click: onFeatureClick });
+}
+
+/* legend render */
+function renderLegend(breaks) {
+  const container = document.getElementById('legendItems');
+  container.innerHTML = '';
+  for (let i=0;i<breaks.length;i++) {
+    const prev = i === 0 ? (breaks[0] - (breaks[breaks.length-1]-breaks[0])/breaks.length) : breaks[i-1];
+    const label = `${(i===0 ? Number(prev).toFixed(3) : Number(prev).toFixed(3))} — ${Number(breaks[i]).toFixed(3)}`;
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    const box = document.createElement('span');
+    box.className = 'color-box';
+    box.style.background = PALETTE[i];
+    const text = document.createElement('span');
+    text.innerText = label;
+    item.appendChild(box);
+    item.appendChild(text);
+    container.appendChild(item);
+  }
+}
+
+/* Render sidebar detail and charts (uses Chart.js) */
+let tipoUsoChart = null;
+let ingresoChart = null;
+
+function renderRegionDetail(feature, metric, detail) {
+  const name = (feature.properties && (feature.properties.DeNombre || feature.properties.DeNombredeleterename || feature.properties.NOMBRE)) || 'Región';
+  const htmlParts = [];
+  htmlParts.push(`<div><strong>${name}</strong></div>`);
+  htmlParts.push(`<div class="stat">Índice de desarrollo: <strong>${detail.indiceDesarrollo !== undefined ? Number(detail.indiceDesarrollo).toFixed(3) : (metric.indiceDesarrollo !== undefined ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A')}</strong></div>`);
+  htmlParts.push(`<div class="stat">Total hogares: <strong>${detail.totalHogares !== undefined ? detail.totalHogares : metric.totalHogares || 'N/A'}</strong></div>`);
+  htmlParts.push(`<div class="stat">Promedio habilidades digitales: <strong>${detail.avgHabilidadesDigitales !== undefined ? Number(detail.avgHabilidadesDigitales).toFixed(2) : metric.avgHabilidadesDigitales !== undefined ? Number(metric.avgHabilidadesDigitales).toFixed(2) : 'N/A'}</strong></div>`);
+  htmlParts.push(`<div class="stat">Pct. barrera costo: <strong>${detail.pctBarreraCosto !== undefined ? (Number(detail.pctBarreraCosto)*100).toFixed(1) + '%' : metric.pctBarreraCosto !== undefined ? (Number(metric.pctBarreraCosto)*100).toFixed(1)+'%' : 'N/A'}</strong></div>`);
+  // place holder for charts
+  htmlParts.push(`<div style="margin-top:8px;"><canvas id="tipoUsoCanvas" class="chart-canvas"></canvas></div>`);
+  htmlParts.push(`<div style="margin-top:8px;"><canvas id="ingresoCanvas" class="chart-canvas"></canvas></div>`);
+  // other handy fields
+  htmlParts.push(`<div style="margin-top:8px;"><strong>Razon no internet (top):</strong><pre>${detail.razonNoInternetTop ? JSON.stringify(detail.razonNoInternetTop, null, 2) : 'N/A'}</pre></div>`);
+  htmlParts.push(`<div style="margin-top:8px;"><strong>Distribución ingreso:</strong><pre>${detail.ingresoDistribution ? JSON.stringify(detail.ingresoDistribution, null, 2) : 'N/A'}</pre></div>`);
+
+  document.getElementById('detailContent').innerHTML = htmlParts.join('');
+
+  // build charts
+  // tipoUsoCounts -> bar
+  const tipoUso = detail.tipoUsoCounts || {};
+  const tipoKeys = Object.keys(tipoUso);
+  const tipoVals = tipoKeys.map(k => tipoUso[k]);
+
+  const ctx1 = document.getElementById('tipoUsoCanvas').getContext('2d');
+  if (tipoUsoChart) tipoUsoChart.destroy();
+  tipoUsoChart = new Chart(ctx1, {
+    type: 'bar',
+    data: { labels: tipoKeys, datasets: [{ label: 'Tipo uso', data: tipoVals }] },
+    options: { responsive:true, plugins:{legend:{display:false}} }
+  });
+
+  // ingresoDistribution -> pie
+  const ingresoDist = detail.ingresoDistribution || {};
+  const ingKeys = Object.keys(ingresoDist);
+  const ingVals = ingKeys.map(k => ingresoDist[k]);
+  const ctx2 = document.getElementById('ingresoCanvas').getContext('2d');
+  if (ingresoChart) ingresoChart.destroy();
+  ingresoChart = new Chart(ctx2, {
+    type: 'pie',
+    data: { labels: ingKeys, datasets: [{ data: ingVals }] },
+    options: { responsive:true, plugins:{legend:{position:'bottom'}} }
+  });
+}
+
+/* Load metrics + geojson and paint */
+async function loadAndRenderMap() {
+  if (!archivoId) { alert('Falta parámetro ?id='); return; }
+  try {
+    // 1) metrics with filters
+    const q = buildFilterParams();
+    const resM = await fetch(`${API_BASE}/api/archivos2/${archivoId}/map${q}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!resM.ok) {
+      throw new Error('Error al pedir métricas: ' + resM.status);
+    }
+    const metrics = await resM.json();
+    ingestMetrics(metrics);
+
+    // compute quantile breaks using metricValues
+    const breaks = computeQuantileBreaks(metricValues, BUCKETS);
+    currentBreaks = breaks;
+    renderLegend(breaks);
+
+    // 2) request geojson with Authorization
+    const resG = await fetch(GEOJSON_URL, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!resG.ok) throw new Error('GeoJSON no encontrado o acceso denegado (status ' + resG.status + ')');
+    const geojson = await resG.json();
+
+    if (geojsonLayer) map.removeLayer(geojsonLayer);
+    geojsonLayer = L.geoJson(geojson, { style: styleFeature, onEachFeature }).addTo(map);
+    try { map.fitBounds(geojsonLayer.getBounds(), { padding:[20,20] }); } catch(e){ console.warn('fitBounds fail', e); }
+
+    // optionally prebind tooltips
+    geojsonLayer.eachLayer(layer => {
+      const f = layer.feature;
+      const deName = (f.properties && (f.properties.DeNombre || f.properties.DeNombredeleterename || f.properties.NOMBRE)) || 'Región';
+      const metric = metricsByName.get(normalizeName(deName));
+      const val = metric && metric.indiceDesarrollo !== undefined ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A';
+      layer.bindTooltip(`${deName}<br>Índice: ${val}`);
+    });
+
+  } catch (err) {
+    console.error(err);
+    alert('Error cargando mapa: ' + err.message);
+  }
+}
+
+/* UI wiring */
+document.getElementById('refreshBtn').addEventListener('click', loadAndRenderMap);
+
+/* show email */
+(async function showEmail() {
+  try {
+    const r = await fetch(`${API_BASE}/api/auth/me`, { headers: {'Authorization':'Bearer '+token} });
+    if (r.ok) {
+      const u = await r.json();
+      if (u && u.email) document.getElementById('userEmail').innerText = u.email;
+    }
+  } catch(e){}
+})();
+
+/* initial load */
+loadAndRenderMap();
+
+</script>
+</body>
+</html>

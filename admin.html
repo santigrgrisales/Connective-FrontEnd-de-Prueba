@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Admin Dashboard</title>
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f2f2f2; }
+    .btn-link { color: blue; cursor: pointer; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>Administrador</h1>
+  <p>Bienvenido, esta es la vista de administrador. Aquí puedes importar CSV y ver archivos.</p>
+  
+  <input type="file" id="fileInput" accept=".csv"><br><br>
+  <input type="text" id="nombreArchivo" placeholder="Nombre archivo (opcional)"><br><br>
+  <input type="text" id="descripcion" placeholder="Descripción (opcional)"><br><br>
+  <button id="uploadBtn">Subir CSV</button>
+  <p id="status"></p>
+
+  <!-- Tabla de archivos -->
+  <h2>Archivos Cargados</h2>
+  <table id="archivosTable">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Descripción</th>
+        <th>Fecha Cargada</th>
+        <th>Acción</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  
+  <p><a href="/" onclick="logout();return false;">Cerrar sesión</a></p>
+
+<script>
+const API_BASE = 'http://localhost:8081'; 
+const token = localStorage.getItem('token');  
+
+function logout() {
+  localStorage.removeItem('token');
+  window.location.href = '/';
+}
+
+(async function check() {
+  if (!token) { window.location.href = '/'; return; }
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) {
+      localStorage.removeItem('token');
+      window.location.href = '/';
+      return;
+    }
+    const user = await res.json();
+    const roles = (user.roles||[]).map(r=>r.toUpperCase());
+    if (!roles.some(r => r.includes('ADMIN'))) {
+      localStorage.removeItem('token');
+      window.location.href = '/';
+    } else {
+      cargarArchivos(); // cargar tabla solo si es admin
+    }
+  } catch (e) {
+    console.error('Error validando sesión:', e);
+    localStorage.removeItem('token');
+    window.location.href = '/';
+  }
+})();
+
+// Subir archivo
+document.getElementById("uploadBtn").addEventListener("click", async () => {
+  const fileInput = document.getElementById("fileInput");
+  const nombreArchivo = document.getElementById("nombreArchivo").value;
+  const descripcion = document.getElementById("descripcion").value;
+  const statusEl = document.getElementById("status");
+
+  if (fileInput.files.length === 0) {
+    statusEl.innerText = "Por favor selecciona un archivo CSV";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  if (nombreArchivo) formData.append("nombreArchivo", nombreArchivo);
+  if (descripcion) formData.append("description", descripcion);
+
+  try {
+    const response = await fetch(`${API_BASE}/api/archivos/upload`, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      statusEl.innerText = "Error: " + errText;
+      return;
+    }
+
+    const data = await response.json();
+    statusEl.innerText = "Subida exitosa: " + JSON.stringify(data);
+    cargarArchivos(); // recargar la tabla al subir
+  } catch (err) {
+    console.error("Error al subir:", err);
+    statusEl.innerText = "Error en la conexión: " + err.message;
+  }
+});
+
+// Cargar lista de archivos
+async function cargarArchivos() {
+  try {
+    const res = await fetch(`${API_BASE}/api/archivos/list`, {
+      headers: { "Authorization": "Bearer " + token }
+    });
+    if (!res.ok) {
+      console.error("Error al obtener archivos", res.status);
+      return;
+    }
+    const archivos = await res.json();
+    const tbody = document.querySelector("#archivosTable tbody");
+    tbody.innerHTML = "";
+    archivos.forEach(a => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${a.id_archivo}</td>
+        <td>${a.nombre_archivo || "-"}</td>
+        <td>${a.description || "-"}</td>
+        <td>${a.created_at|| "-"}</td>
+        <td><span class="btn-link" onclick="verDashboard(${a.id_archivo})">Ver Dashboard</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error("Error cargando archivos:", e);
+  }
+}
+
+function verDashboard(id) {
+  window.location.href = `/dashboard.html?id=${id}`;
+}
+</script>
+
+</body>
+</html>

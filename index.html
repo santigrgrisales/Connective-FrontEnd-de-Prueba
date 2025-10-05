@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Auth Demo — Login / Register</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f7fb; color:#222; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+    .card { background:white; padding:20px; border-radius:8px; box-shadow:0 6px 18px rgba(17,24,39,0.08); width:360px; }
+    h2 { margin:0 0 12px 0; font-size:20px; }
+    .form-group { margin-bottom:10px; }
+    label { display:block; font-size:13px; margin-bottom:4px; }
+    input { width:100%; padding:8px 10px; border:1px solid #d7dbe6; border-radius:6px; box-sizing:border-box; }
+    button { width:100%; padding:10px; margin-top:8px; border:0; background:#2b7cff; color:white; border-radius:6px; cursor:pointer; }
+    .muted { font-size:13px; color:#6b7280; margin-top:8px; text-align:center; }
+    .link { color:#2b7cff; cursor:pointer; text-decoration:underline; }
+    #msg { margin-top:8px; font-size:13px; color:#b91c1c; min-height:18px; }
+    .small-btn { background:#e5e7eb; color:#111; padding:6px 10px; border-radius:6px; border:0; cursor:pointer; }
+    .top-right { position:absolute; top:12px; right:12px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <div class="top-right" id="loggedInfo" style="display:none;">
+      <span id="userEmail"></span>
+      <button class="small-btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div id="forms">
+      <h2 id="title">Iniciar sesión</h2>
+
+      <!-- LOGIN -->
+      <div id="loginForm">
+        <div class="form-group">
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" placeholder="you@domain.com" />
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Contraseña</label>
+          <input id="loginPassword" type="password" placeholder="••••••••" />
+        </div>
+        <button id="loginBtn">Iniciar sesión</button>
+        <div class="muted">¿No tienes cuenta? <span class="link" onclick="showRegister()">Regístrate</span></div>
+      </div>
+
+      <!-- REGISTER -->
+      <div id="registerForm" style="display:none;">
+        <div class="form-group">
+          <label for="regFullname">Nombre completo</label>
+          <input id="regFullname" type="text" placeholder="Tu nombre completo" />
+        </div>
+        <div class="form-group">
+          <label for="regEmail">Email</label>
+          <input id="regEmail" type="email" placeholder="you@domain.com" />
+        </div>
+        <div class="form-group">
+          <label for="regPassword">Contraseña</label>
+          <input id="regPassword" type="password" placeholder="••••••••" />
+        </div>
+        <button id="registerBtn">Registrarme</button>
+        <div class="muted">¿Ya tienes cuenta? <span class="link" onclick="showLogin()">Inicia sesión</span></div>
+      </div>
+
+      <div id="msg"></div>
+    </div>
+  </div>
+
+<script>
+/*
+  Frontend auth flow (index.html):
+  - API_BASE: where está tu backend Spring Boot (cambia si necesitas).
+  - Guarda token en localStorage: 'token'.
+  - Al cargar la página: si hay token -> llama GET /api/auth/me para validar y redirigir.
+  - Al login/register: backend devuelve { token, user: { ... roles ... } } -> guarda token y redirige.
+*/
+
+const API_BASE = 'http://localhost:8081'; // AJUSTA al puerto de tu backend si es distinto
+const loginBtn = document.getElementById('loginBtn');
+const registerBtn = document.getElementById('registerBtn');
+const msgEl = document.getElementById('msg');
+const loggedInfo = document.getElementById('loggedInfo');
+const userEmailEl = document.getElementById('userEmail');
+
+window.addEventListener('load', () => {
+  const token = getToken();
+  if (token) {
+    // valida token y obtiene datos del usuario
+    fetchMeAndRedirect(token);
+  } else {
+    showLogin(); // mostrar formulario por defecto
+  }
+});
+
+loginBtn.addEventListener('click', async (e) => {
+  e.preventDefault();
+  clearMsg();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if (!email || !password) return showMsg('Completa email y contraseña');
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email, password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      return showMsg(err.message || 'Login failed');
+    }
+    const data = await res.json();
+    // data: { token, user: { id, email, fullname?, enabled?, roles: [...] } }
+    handleAuthSuccess(data);
+  } catch (err) {
+    showMsg('Error de conexión: ' + err.message);
+  }
+});
+
+registerBtn.addEventListener('click', async (e) => {
+  e.preventDefault();
+  clearMsg();
+  const fullname = document.getElementById('regFullname').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value.trim();
+  if (!fullname || !email || !password) return showMsg('Completa todos los campos');
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ fullname, email, password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      return showMsg(err.error || err.message || 'Register failed');
+    }
+    const data = await res.json();
+    // register returns same shape as login: { token, user: {...} }
+    handleAuthSuccess(data);
+  } catch (err) {
+    showMsg('Error de conexión: ' + err.message);
+  }
+});
+
+function handleAuthSuccess(data) {
+  if (!data || !data.token) return showMsg('Respuesta inválida del servidor');
+  setToken(data.token);
+  // Mostrar info de usuario
+  const user = data.user || {};
+  userEmailEl.textContent = user.email || '';
+  loggedInfo.style.display = 'block';
+  // Redirigir según rol
+  redirectByRoles(user.roles || []);
+}
+
+async function fetchMeAndRedirect(token) {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (res.status === 401) {
+      // token inválido/expirado -> logout y mostrar login
+      clearAuthAndShowLogin();
+      return;
+    }
+    if (!res.ok) {
+      // error inesperado: mostrar login y mensaje
+      clearAuthAndShowLogin();
+      showMsg('Error validando sesión');
+      return;
+    }
+    const user = await res.json();
+    // user: { id, email, fullname, enabled, roles }
+    userEmailEl.textContent = user.email || '';
+    loggedInfo.style.display = 'block';
+    redirectByRoles(user.roles || []);
+  } catch (err) {
+    showMsg('No se pudo validar sesión: ' + err.message);
+  }
+}
+
+function redirectByRoles(roles) {
+  // roles suelen venir como ["ROLE_ADMIN"] o ["ADMIN"], cubrimos variantes
+  const normalized = (roles || []).map(r => (r || '').toString().toUpperCase());
+  const isAdmin = normalized.some(r => r.includes('ADMIN'));
+  const isConsultor = normalized.some(r => r.includes('CONSULTOR') || r.includes('CONSULTANT') || r.includes('USER'));
+  // Prioriza admin si tiene ambos roles
+  if (isAdmin) {
+    // redirige a admin dashboard
+    window.location.href = '/admin.html';
+  } else if (isConsultor) {
+    window.location.href = '/consultor.html';
+  } else {
+    // rol desconocido -> ir a home o login
+    window.location.href = '/';
+  }
+}
+
+/* Helpers */
+function getToken() {
+  return localStorage.getItem('token');
+}
+function setToken(t) {
+  localStorage.setItem('token', t);
+}
+function clearToken() {
+  localStorage.removeItem('token');
+}
+function logout() {
+  clearToken();
+  clearAuthAndShowLogin();
+}
+function clearAuthAndShowLogin() {
+  loggedInfo.style.display = 'none';
+  userEmailEl.textContent = '';
+  showLogin();
+}
+function showLogin() {
+  document.getElementById('title').textContent = 'Iniciar sesión';
+  document.getElementById('loginForm').style.display = 'block';
+  document.getElementById('registerForm').style.display = 'none';
+  clearMsg();
+}
+function showRegister() {
+  document.getElementById('title').textContent = 'Registro';
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('registerForm').style.display = 'block';
+  clearMsg();
+}
+function showMsg(m) {
+  msgEl.textContent = m;
+}
+function clearMsg() {
+  msgEl.textContent = '';
+}
+</script>
+</body>
+</html>
