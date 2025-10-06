@@ -27,6 +27,15 @@
       width: 100%;
       border-radius: 0.5rem;
     }
+    
+    /* SOLUCIÓN 1: Asegurar que el mapa quede por debajo del modal. */
+    /* Le damos una posición relativa para que el z-index funcione correctamente */
+    /* y un z-index más bajo que el del modal (que es z-50). */
+    #map {
+        position: relative;
+        z-index: 10;
+    }
+    
     .leaflet-tooltip {
         background-color: #fff;
         border: 1px solid #ccc;
@@ -52,6 +61,12 @@
     .chart-canvas {
       width: 100% !important;
       height: 200px !important;
+    }
+
+    /* SOLUCIÓN 2.1: Clase para deshabilitar la transición mientras se arrastra. */
+    /* Esto hace que el movimiento sea instantáneo y fluido. */
+    .dragging {
+        transition: none !important;
     }
   </style>
 </head>
@@ -102,7 +117,7 @@
                 <option value="">Todos</option><option value="Bajo">Bajo</option><option value="Medio">Medio</option><option value="Alto">Alto</option>
               </select>
             </div>
-             <div>
+              <div>
               <label for="fMinHabs" class="block text-sm font-medium text-gray-700">Nivel Mínimo de Habilidades</label>
               <select id="fMinHabs" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
                 <option value="">Cualquiera</option>
@@ -146,7 +161,9 @@
   </footer>
 
   <!-- Modal para detalles de la región -->
+  <!-- El z-index de Tailwind 'z-50' asegura que esté por encima de casi todo. -->
   <div id="regionDetailModal" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-50 hidden">
+      <!-- El z-index del contenido es implícitamente mayor que el de su padre (el overlay) -->
       <div id="modalContent" class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col absolute transition-all duration-300 opacity-0 scale-95">
           <!-- Modal Header -->
           <div id="modalHeader" class="flex items-center justify-between p-5 border-b rounded-t cursor-move">
@@ -213,32 +230,71 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<!-- Leaflet + Chart.js -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
 /* CONFIGURACIÓN */
 const API_BASE = 'http://localhost:8081';
 const GEOJSON_URL = `${API_BASE}/colombia_departments.geojson`;
 const BUCKETS = 5;
-const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
-const CATEGORY_NAMES = ['Muy Bajo', 'Bajo', 'Medio', 'Alto', 'Muy Alto'];
+const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15']; // Paleta de Rojos
+const CATEGORY_NAMES = ['Muy Bajo', 'Bajo', 'Medio', 'Alto', 'Muy Alto']; // Nombres para la leyenda
 
-let token = localStorage.getItem('token');
 const params = new URLSearchParams(window.location.search);
 const archivoId = params.get('id');
 
-if (!token) {
-    alert('No autorizado. Por favor, inicia sesión.');
-    window.location.href = 'index.html';
-}
 if (!archivoId) {
     alert('Falta el ID del archivo en la URL. ?id=...');
+    // Redirigir a una página de error o dashboard principal si es necesario
 }
+
 document.getElementById('archivoId').innerText = archivoId || '(ninguno)';
 
-/* --- Helpers --- */
+/* SOLUCIÓN 3: Wrapper de Fetch para manejar la expiración del token */
+// Esta función envuelve todas las llamadas a la API.
+// Automáticamente añade el token de autenticación y, si recibe un error 401 (No autorizado),
+// limpia el almacenamiento local y redirige al usuario a la página de inicio de sesión.
+async function fetchWithAuth(url, options = {}) {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+        alert('No se encontró un token de sesión. Serás redirigido al inicio.');
+        window.location.href = 'index.html'; // O la ruta a tu login
+        return Promise.reject(new Error('No hay token'));
+    }
+
+    const headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+
+    const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('token'); // Limpiar el token expirado
+        alert('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
+        window.location.href = 'index.html'; // Redirigir a la página de login
+        // Devolvemos una promesa rechazada para detener cualquier procesamiento posterior
+        return Promise.reject(new Error('Token expirado o inválido.'));
+    }
+
+    return response;
+}
+
+
+/* INICIALIZACIÓN DEL MAPA */
+const map = L.map('map', { minZoom: 5, attributionControl: false }).setView([4.5, -73.0], 6);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+}).addTo(map);
+
+/* GLOBALES */
+let geojsonLayer = null;
+let metricsByName = new Map();
+let currentBreaks = [];
+let tipoUsoChart = null;
+let ingresoChart = null;
+
+/* FUNCIONES AUXILIARES */
 function normalizeName(s) {
     if (s == null) return null;
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -246,25 +302,36 @@ function normalizeName(s) {
 
 function buildFilterParams() {
     const p = new URLSearchParams();
-    const fields = { 'edad': 'fEdad', 'genero': 'fGenero', 'ingresoCategoria': 'fIngreso', 'minIndiceHabilidades': 'fMinHabs' };
+    const fields = {
+        'edad': 'fEdad',
+        'genero': 'fGenero',
+        'ingresoCategoria': 'fIngreso',
+        'minIndiceHabilidades': 'fMinHabs'
+    };
     for (const [param, id] of Object.entries(fields)) {
         const value = document.getElementById(id).value;
         if (value) p.set(param, value);
     }
-    if (document.getElementById('fBarreraCosto').checked) p.set('onlyBarreraCosto', 'true');
+    if (document.getElementById('fBarreraCosto').checked) {
+        p.set('onlyBarreraCosto', 'true');
+    }
     return p.toString() ? '?' + p.toString() : '';
 }
 
 function computeQuantileBreaks(values, buckets) {
     if (!values || !values.length) return Array(buckets).fill(0);
-    const sorted = values.slice().filter(v => v !== null && !isNaN(v)).sort((a,b)=>a-b);
+    const sorted = values.slice().filter(v => v !== null && !isNaN(v)).sort((a, b) => a - b);
     if (sorted.length === 0) return Array(buckets).fill(0);
+    
     const uniqueValues = [...new Set(sorted)];
     if (uniqueValues.length <= buckets) {
-        const min = sorted[0], max = sorted[sorted.length - 1];
+        const min = sorted[0];
+        const max = sorted[sorted.length - 1];
+        if (min === max) return Array.from({length: buckets}, (_, i) => min + i * 1e-6);
         const step = (max - min) / buckets;
         return Array.from({length: buckets}, (_, i) => min + (i + 1) * step);
     }
+
     const breaks = [];
     for (let i = 1; i <= buckets; i++) {
         const q = i / buckets;
@@ -277,6 +344,7 @@ function computeQuantileBreaks(values, buckets) {
     return breaks;
 }
 
+
 function getCategoryForValue(value, breaks, categories) {
     if (value === null || value === undefined || isNaN(value)) return 'Sin datos';
     for (let i = 0; i < breaks.length; i++) {
@@ -286,57 +354,30 @@ function getCategoryForValue(value, breaks, categories) {
 }
 
 function getColorForValue(v, breaks) {
-    if (v === null || v === undefined || isNaN(v)) return '#D1D5DB';
+    if (v === null || v === undefined || isNaN(v)) return '#D1D5DB'; // gris para sin datos
     const category = getCategoryForValue(v, breaks, CATEGORY_NAMES);
     const index = CATEGORY_NAMES.indexOf(category);
     return PALETTE[index] || '#D1D5DB';
 }
 
-/* --- Auth-aware fetch wrapper --- */
-async function fetchWithAuth(url, options = {}) {
-    options = options || {};
-    options.headers = options.headers || {};
-    if (!options.headers['Authorization']) options.headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(url, options);
-    if (res.status === 401) {
-        // token expirado / invalid -> limpiar y redirigir
-        localStorage.removeItem('token');
-        alert('Sesión expirada. Redirigiendo al inicio de sesión.');
-        window.location.href = 'index.html';
-        // lanzar para que quien llame deje de procesar
-        throw new Error('401 Unauthorized');
-    }
-    return res;
-}
-
-/* --- GLOBALES DE DATOS Y MAPA --- */
-const map = L.map('map', { minZoom: 5, attributionControl: false }).setView([4.5, -73.0], 6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-}).addTo(map);
-
-let geojsonLayer = null;
-let metricsByName = new Map();
-let currentBreaks = [];
-let tipoUsoChart = null;
-let ingresoChart = null;
-
-/* --- Procesamiento de métricas --- */
+/* PROCESAMIENTO DE DATOS */
 function ingestMetrics(metricsArray) {
     metricsByName.clear();
     let metricValues = [];
-    if (!Array.isArray(metricsArray)) return metricValues;
+    if (!Array.isArray(metricsArray)) return;
     for (const m of metricsArray) {
         const name = m.nameRegion;
         if (!name) continue;
         const n = normalizeName(name);
         metricsByName.set(n, m);
-        if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) metricValues.push(Number(m.indiceDesarrollo));
+        if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
+            metricValues.push(Number(m.indiceDesarrollo));
+        }
     }
     return metricValues;
 }
 
-/* --- Map styling / events --- */
+/* ESTILO Y EVENTOS DEL MAPA */
 function getRegionNameFromFeature(feature) {
     if (!feature || !feature.properties) return 'Región desconocida';
     return feature.properties.NOMBRE_DANE || feature.properties.NOMBRE || feature.properties.DeNombre || 'Región sin nombre';
@@ -347,10 +388,11 @@ function styleFeature(feature) {
     const normalized = normalizeName(deName);
     const metric = metricsByName.get(normalized);
     const value = metric ? metric.indiceDesarrollo : null;
+    const fillColor = getColorForValue(value, currentBreaks);
     return {
         weight: 1,
         color: '#FFFFFF',
-        fillColor: getColorForValue(value, currentBreaks),
+        fillColor: fillColor,
         fillOpacity: (value === null ? 0.4 : 0.9)
     };
 }
@@ -371,20 +413,26 @@ async function onFeatureClick(e) {
     const deName = getRegionNameFromFeature(feature);
     const normalized = normalizeName(deName);
     const metric = metricsByName.get(normalized);
+
     if (!metric) {
         alert('No hay datos detallados para esta región con los filtros actuales.');
         return;
     }
+    
     toggleModal(true, 'Cargando detalles...');
+
     try {
         const q = buildFilterParams();
+        // USANDO fetchWithAuth en lugar de fetch
         const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/regions/${metric.idRegion}${q}`);
         if (!res.ok) throw new Error(`Error ${res.status} obteniendo detalle.`);
         const detail = await res.json();
         renderRegionDetail(feature, metric, detail);
     } catch (err) {
-        console.error(err);
-        if (err.message !== '401 Unauthorized') {
+        console.error("Error en onFeatureClick:", err);
+        // El wrapper fetchWithAuth ya maneja la redirección, así que solo ocultamos el modal
+        // si el error no fue por autenticación.
+        if (err.message.indexOf('Token') === -1) {
             alert('Error al obtener detalle: ' + err.message);
             toggleModal(false);
         }
@@ -394,23 +442,30 @@ async function onFeatureClick(e) {
 function onEachFeature(feature, layer) {
     const deName = getRegionNameFromFeature(feature);
     const metric = metricsByName.get(normalizeName(deName));
-    const value = (metric && metric.indiceDesarrollo !== undefined) ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A';
+    const value = metric && metric.indiceDesarrollo !== undefined ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A';
     layer.bindTooltip(`${deName}<br>Índice: <strong>${value}</strong>`, { sticky: true });
     layer.on({ mouseover: highlightFeature, mouseout: resetHighlight, click: onFeatureClick });
 }
 
-/* --- UI: leyenda y modal --- */
+
+/* RENDERIZADO DE COMPONENTES UI */
+
 function renderLegend(breaks) {
     const container = document.getElementById('legendItems');
     container.innerHTML = '';
     let lastBreak = 0;
+    
     if (breaks.length > 0) {
-        const metricValues = Array.from(metricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null);
-        if (metricValues.length > 0) lastBreak = Math.min(...metricValues);
+        const metricValues = Array.from(metricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null && !isNaN(v));
+        if (metricValues.length > 0) {
+           lastBreak = Math.min(...metricValues);
+        }
     }
+
     breaks.forEach((br, i) => {
         const label = `${Number(lastBreak).toFixed(2)} - ${Number(br).toFixed(2)}`;
         lastBreak = br + 0.00001;
+
         const item = document.createElement('div');
         item.className = 'flex items-center space-x-2 text-sm';
         item.innerHTML = `
@@ -425,6 +480,7 @@ function renderLegend(breaks) {
 function renderRegionDetail(feature, metric, detail) {
     const name = getRegionNameFromFeature(feature);
     const indice = detail.indiceDesarrollo !== undefined ? Number(detail.indiceDesarrollo) : null;
+    
     document.getElementById('modalRegionName').textContent = name;
     document.getElementById('modalIndice').textContent = indice !== null ? indice.toFixed(3) : 'N/A';
     document.getElementById('modalIndiceCategoria').textContent = indice !== null ? getCategoryForValue(indice, currentBreaks, CATEGORY_NAMES) : '';
@@ -444,121 +500,134 @@ function renderRegionDetail(feature, metric, detail) {
                 razonContainer.appendChild(li);
             }
         }
-        if (!hasReasons) razonContainer.innerHTML = '<li>No se reportaron barreras específicas en los hogares analizados.</li>';
+        if (!hasReasons) {
+            razonContainer.innerHTML = '<li>No se reportaron barreras específicas en los hogares analizados.</li>';
+        }
     } else {
         razonContainer.innerHTML = '<li>No hay datos disponibles.</li>';
     }
 
-    // Tipo de uso - barras
     const tipoUso = detail.tipoUsoCounts || {};
-    if (tipoUso['No Aplica']) { tipoUso['Sin Internet'] = tipoUso['No Aplica']; delete tipoUso['No Aplica']; }
-    const tipoKeys = Object.keys(tipoUso), tipoVals = Object.values(tipoUso);
+    if (tipoUso['No Aplica']) {
+        tipoUso['Sin Internet'] = tipoUso['No Aplica'];
+        delete tipoUso['No Aplica'];
+    }
+    const tipoKeys = Object.keys(tipoUso);
+    const tipoVals = Object.values(tipoUso);
+
     const ctx1 = document.getElementById('tipoUsoCanvas').getContext('2d');
     if (tipoUsoChart) tipoUsoChart.destroy();
     tipoUsoChart = new Chart(ctx1, {
         type: 'bar',
-        data: { labels: tipoKeys, datasets: [{ label: 'Número de Hogares', data: tipoVals, backgroundColor: 'rgba(79, 70, 229, 0.8)', borderColor: 'rgba(79, 70, 229, 1)', borderWidth: 1 }] },
+        data: {
+            labels: tipoKeys,
+            datasets: [{
+                label: 'Número de Hogares',
+                data: tipoVals,
+                backgroundColor: 'rgba(79, 70, 229, 0.8)',
+                borderColor: 'rgba(79, 70, 229, 1)',
+                borderWidth: 1
+            }]
+        },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
     });
 
-    // Ingresos - pie
     const ingresoDist = detail.ingresoDistribution || {};
-    const ingKeys = Object.keys(ingresoDist), ingVals = Object.values(ingresoDist);
+    const ingKeys = Object.keys(ingresoDist);
+    const ingVals = Object.values(ingresoDist);
     const ctx2 = document.getElementById('ingresoCanvas').getContext('2d');
     if (ingresoChart) ingresoChart.destroy();
     ingresoChart = new Chart(ctx2, {
         type: 'pie',
-        data: { labels: ingKeys, datasets: [{ data: ingVals, backgroundColor: ['#d1fae5', '#a7f3d0', '#6ee7b7'], hoverOffset: 4 }] },
+        data: {
+            labels: ingKeys,
+            datasets: [{
+                data: ingVals,
+                backgroundColor: ['#d1fae5', '#a7f3d0', '#6ee7b7'],
+                hoverOffset: 4
+            }]
+        },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
     });
 }
 
-/* --- Mejor drag: pointer events, posición fixed y límites --- */
 function dragElement(elmnt) {
-    if (!elmnt) return;
-    const header = document.getElementById('modalHeader') || elmnt;
-    let isDown = false;
-    let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-    // global flag for overlay click suppression
-    window.__isModalDragging = false;
+  let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+  const header = document.getElementById("modalHeader");
 
-    header.addEventListener('pointerdown', (e) => {
-        if (e.target.closest('button')) return; // si clic en botón, no iniciar drag
-        e.preventDefault();
-        isDown = true;
-        window.__isModalDragging = true;
-        document.body.style.userSelect = 'none';
-        const rect = elmnt.getBoundingClientRect();
-        startX = e.clientX; startY = e.clientY;
-        startLeft = rect.left; startTop = rect.top;
-        // usar fixed y quitar transform para que left/top funcionen
-        elmnt.style.position = 'fixed';
-        elmnt.style.left = `${startLeft}px`;
-        elmnt.style.top = `${startTop}px`;
-        elmnt.style.transform = 'none';
-        elmnt.setPointerCapture && elmnt.setPointerCapture(e.pointerId);
-    });
+  if (header) {
+    header.onmousedown = dragMouseDown;
+  } else {
+    elmnt.onmousedown = dragMouseDown;
+  }
 
-    document.addEventListener('pointermove', (e) => {
-        if (!isDown) return;
-        e.preventDefault();
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        let newLeft = startLeft + dx;
-        let newTop = startTop + dy;
-        // limitar dentro viewport
-        const maxLeft = Math.max(0, window.innerWidth - elmnt.offsetWidth);
-        const maxTop = Math.max(0, window.innerHeight - elmnt.offsetHeight);
-        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-        newTop = Math.max(0, Math.min(newTop, maxTop));
-        elmnt.style.left = `${newLeft}px`;
-        elmnt.style.top = `${newTop}px`;
-    });
+  function dragMouseDown(e) {
+    e = e || window.event;
+    if (e.target.closest('button')) {
+        return;
+    }
+    e.preventDefault();
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    
+    // SOLUCIÓN 2.2: Añadimos la clase 'dragging' para que el movimiento sea fluido.
+    elmnt.classList.add('dragging');
 
-    document.addEventListener('pointerup', (e) => {
-        if (!isDown) return;
-        isDown = false;
-        try { elmnt.releasePointerCapture && elmnt.releasePointerCapture(e.pointerId); } catch {}
-        document.body.style.userSelect = '';
-        // pequeño retraso para evitar que el click final cierre el modal
-        setTimeout(() => { window.__isModalDragging = false; }, 50);
-    });
+    document.onmouseup = closeDragElement;
+    document.onmousemove = elementDrag;
+  }
+
+  function elementDrag(e) {
+    e = e || window.event;
+    e.preventDefault();
+    pos1 = pos3 - e.clientX;
+    pos2 = pos4 - e.clientY;
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    
+    // MEJORA: Lógica de arrastre sin que se cierre accidentalmente.
+    // Calculamos la nueva posición y nos aseguramos de que no se salga de la pantalla.
+    const newTop = Math.max(0, Math.min(window.innerHeight - elmnt.offsetHeight, elmnt.offsetTop - pos2));
+    const newLeft = Math.max(0, Math.min(window.innerWidth - elmnt.offsetWidth, elmnt.offsetLeft - pos1));
+
+    elmnt.style.top = newTop + "px";
+    elmnt.style.left = newLeft + "px";
+  }
+
+  function closeDragElement() {
+    // SOLUCIÓN 2.3: Quitamos la clase 'dragging' para restaurar la animación.
+    elmnt.classList.remove('dragging');
+    document.onmouseup = null;
+    document.onmousemove = null;
+  }
 }
 
-/* --- Modal show/hide con prioridad z y centrado --- */
 function toggleModal(show, title = '') {
     const modalOverlay = document.getElementById('regionDetailModal');
     const modalContent = document.getElementById('modalContent');
-
-    // Forzar z-index elevado (por si Leaflet usa z más alto)
-    modalOverlay.style.zIndex = '99999';
-    modalContent.style.zIndex = '100000';
-
     if (show) {
-        if (title) document.getElementById('modalRegionName').textContent = title;
+        document.getElementById('modalRegionName').textContent = title;
         modalOverlay.classList.remove('hidden');
 
-        // Centrar usando fixed + transform al abrir
-        modalContent.style.position = 'fixed';
-        modalContent.style.left = '50%';
-        modalContent.style.top = '50%';
-        modalContent.style.transform = 'translate(-50%, -50%)';
-        modalContent.classList.remove('opacity-0', 'scale-95');
-        modalContent.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
+        // Centrar el modal al mostrarlo, antes de hacerlo visible
+        // Esto evita saltos visuales.
+        modalContent.style.left = `calc(50% - ${modalContent.offsetWidth / 2}px)`;
+        modalContent.style.top = `calc(50% - ${modalContent.offsetHeight / 2}px)`;
+
+        setTimeout(() => { 
+            modalContent.classList.remove('opacity-0', 'scale-95');
+        }, 50);
+
     } else {
         modalContent.classList.add('opacity-0', 'scale-95');
         setTimeout(() => {
             modalOverlay.classList.add('hidden');
-            // limpiar estilos inline para dejar listo para el próximo open
-            modalContent.style.transform = '';
-            modalContent.style.left = '';
-            modalContent.style.top = '';
-            modalContent.style.position = '';
-        }, 250);
+        }, 300); 
     }
 }
 
-/* --- Carga y renderizado del mapa --- */
+
+/* FUNCIÓN PRINCIPAL DE CARGA */
 async function loadAndRenderMap() {
     const loadingOverlay = document.createElement('div');
     loadingOverlay.innerHTML = `<div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-30"><div class="text-center"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div><p class="mt-4 text-gray-600 font-semibold">Cargando datos del mapa...</p></div></div>`;
@@ -566,56 +635,68 @@ async function loadAndRenderMap() {
 
     try {
         const q = buildFilterParams();
+        // USANDO fetchWithAuth
         const resM = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map${q}`);
         if (!resM.ok) throw new Error(`Error al pedir métricas: ${resM.status}`);
         const metrics = await resM.json();
         const metricValues = ingestMetrics(metrics);
-
+        
         currentBreaks = computeQuantileBreaks(metricValues, BUCKETS);
         renderLegend(currentBreaks);
 
+        // USANDO fetchWithAuth
         const resG = await fetchWithAuth(GEOJSON_URL);
         if (!resG.ok) throw new Error(`GeoJSON no encontrado: ${resG.status}`);
         const geojson = await resG.json();
 
         if (geojsonLayer) map.removeLayer(geojsonLayer);
         geojsonLayer = L.geoJson(geojson, { style: styleFeature, onEachFeature }).addTo(map);
-        if (geojsonLayer.getBounds().isValid()) map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+        if (geojsonLayer.getBounds().isValid()) {
+             map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+        }
     } catch (err) {
-        console.error(err);
-        if (err.message !== '401 Unauthorized') alert('Error cargando mapa: ' + err.message);
+        console.error("Error en loadAndRenderMap:", err);
+        if (err.message.indexOf('Token') === -1) {
+          alert('Error cargando mapa: ' + err.message);
+        }
     } finally {
-        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
+        if(document.body.contains(loadingOverlay)) {
+            document.body.removeChild(loadingOverlay);
+        }
     }
 }
 
-/* --- Eventos DOM (overlay click con protección contra drag) --- */
+/* CABLEADO DE EVENTOS */
 document.getElementById('refreshBtn').addEventListener('click', loadAndRenderMap);
 document.getElementById('closeModalBtn').addEventListener('click', () => toggleModal(false));
 document.getElementById('regionDetailModal').addEventListener('click', (e) => {
-    // Si se está arrastrando, ignorar el click que podría venir por pointerup
-    if (window.__isModalDragging) return;
-    if (e.target.id === 'regionDetailModal') toggleModal(false);
+    if (e.target.id === 'regionDetailModal') {
+        toggleModal(false);
+    }
 });
 
-/* --- Inicio (fetch user + mapa) --- */
+
+/* CARGA INICIAL */
 (async function init() {
     try {
+        // USANDO fetchWithAuth
         const r = await fetchWithAuth(`${API_BASE}/api/auth/me`);
         if (r.ok) {
             const u = await r.json();
             if (u && u.email) document.getElementById('userEmail').innerText = u.email;
         }
-    } catch(e) {
-        console.error("Could not fetch user email", e);
+    } catch(e) { 
+      // El error de token ya es manejado por el wrapper,
+      // así que solo mostramos errores de red, etc.
+      if (e.message.indexOf('Token') === -1) {
+        console.error("No se pudo obtener el email del usuario", e); 
+      }
     }
-
-    await loadAndRenderMap();
-    // Inicializar arrastre
+    
+    loadAndRenderMap();
     dragElement(document.getElementById("modalContent"));
 })();
-</script>
 
+</script>
 </body>
 </html>
-
