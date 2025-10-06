@@ -146,10 +146,10 @@
   </footer>
 
   <!-- Modal para detalles de la región -->
-  <div id="regionDetailModal" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-40 hidden items-center justify-center">
-      <div id="modalContent" class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col transform transition-all scale-95 opacity-0">
+  <div id="regionDetailModal" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-50 hidden">
+      <div id="modalContent" class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col absolute transition-all duration-300 opacity-0 scale-95">
           <!-- Modal Header -->
-          <div class="flex items-center justify-between p-5 border-b rounded-t">
+          <div id="modalHeader" class="flex items-center justify-between p-5 border-b rounded-t cursor-move">
               <h3 id="modalRegionName" class="text-2xl font-bold text-gray-900"></h3>
               <button type="button" id="closeModalBtn" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center">
                   <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
@@ -213,43 +213,32 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<!-- Leaflet + Chart.js -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
 /* CONFIGURACIÓN */
 const API_BASE = 'http://localhost:8081';
 const GEOJSON_URL = `${API_BASE}/colombia_departments.geojson`;
 const BUCKETS = 5;
-const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15']; // Paleta de Rojos
-const CATEGORY_NAMES = ['Muy Bajo', 'Bajo', 'Medio', 'Alto', 'Muy Alto']; // Nombres para la leyenda
+const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15'];
+const CATEGORY_NAMES = ['Muy Bajo', 'Bajo', 'Medio', 'Alto', 'Muy Alto'];
 
-const token = localStorage.getItem('token');
+let token = localStorage.getItem('token');
 const params = new URLSearchParams(window.location.search);
 const archivoId = params.get('id');
 
 if (!token) {
     alert('No autorizado. Por favor, inicia sesión.');
-    window.location.href = '/';
+    window.location.href = 'index.html';
 }
 if (!archivoId) {
     alert('Falta el ID del archivo en la URL. ?id=...');
 }
-
 document.getElementById('archivoId').innerText = archivoId || '(ninguno)';
 
-
-/* INICIALIZACIÓN DEL MAPA */
-const map = L.map('map', { minZoom: 5, attributionControl: false }).setView([4.5, -73.0], 6);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-}).addTo(map);
-
-/* GLOBALES */
-let geojsonLayer = null;
-let metricsByName = new Map();
-let currentBreaks = [];
-let tipoUsoChart = null;
-let ingresoChart = null;
-
-/* FUNCIONES AUXILIARES */
+/* --- Helpers --- */
 function normalizeName(s) {
     if (s == null) return null;
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -257,36 +246,25 @@ function normalizeName(s) {
 
 function buildFilterParams() {
     const p = new URLSearchParams();
-    const fields = {
-        'edad': 'fEdad',
-        'genero': 'fGenero',
-        'ingresoCategoria': 'fIngreso',
-        'minIndiceHabilidades': 'fMinHabs'
-    };
+    const fields = { 'edad': 'fEdad', 'genero': 'fGenero', 'ingresoCategoria': 'fIngreso', 'minIndiceHabilidades': 'fMinHabs' };
     for (const [param, id] of Object.entries(fields)) {
         const value = document.getElementById(id).value;
         if (value) p.set(param, value);
     }
-    if (document.getElementById('fBarreraCosto').checked) {
-        p.set('onlyBarreraCosto', 'true');
-    }
+    if (document.getElementById('fBarreraCosto').checked) p.set('onlyBarreraCosto', 'true');
     return p.toString() ? '?' + p.toString() : '';
 }
 
 function computeQuantileBreaks(values, buckets) {
     if (!values || !values.length) return Array(buckets).fill(0);
-    const sorted = values.slice().filter(v => v !== null && !isNaN(v)).sort((a, b) => a - b);
+    const sorted = values.slice().filter(v => v !== null && !isNaN(v)).sort((a,b)=>a-b);
     if (sorted.length === 0) return Array(buckets).fill(0);
-    
-    // Si hay muy pocos valores distintos, creamos rangos iguales
     const uniqueValues = [...new Set(sorted)];
     if (uniqueValues.length <= buckets) {
-        const min = sorted[0];
-        const max = sorted[sorted.length - 1];
+        const min = sorted[0], max = sorted[sorted.length - 1];
         const step = (max - min) / buckets;
         return Array.from({length: buckets}, (_, i) => min + (i + 1) * step);
     }
-
     const breaks = [];
     for (let i = 1; i <= buckets; i++) {
         const q = i / buckets;
@@ -294,11 +272,10 @@ function computeQuantileBreaks(values, buckets) {
         breaks.push(sorted[Math.max(0, idx)]);
     }
     for (let i = 1; i < breaks.length; i++) {
-        if (breaks[i] <= breaks[i-1]) breaks[i] = breaks[i-1] + 1e-6; // Ensure breaks are increasing
+        if (breaks[i] <= breaks[i-1]) breaks[i] = breaks[i-1] + 1e-6;
     }
     return breaks;
 }
-
 
 function getCategoryForValue(value, breaks, categories) {
     if (value === null || value === undefined || isNaN(value)) return 'Sin datos';
@@ -309,30 +286,57 @@ function getCategoryForValue(value, breaks, categories) {
 }
 
 function getColorForValue(v, breaks) {
-    if (v === null || v === undefined || isNaN(v)) return '#D1D5DB'; // gris para sin datos
+    if (v === null || v === undefined || isNaN(v)) return '#D1D5DB';
     const category = getCategoryForValue(v, breaks, CATEGORY_NAMES);
     const index = CATEGORY_NAMES.indexOf(category);
     return PALETTE[index] || '#D1D5DB';
 }
 
-/* PROCESAMIENTO DE DATOS */
+/* --- Auth-aware fetch wrapper --- */
+async function fetchWithAuth(url, options = {}) {
+    options = options || {};
+    options.headers = options.headers || {};
+    if (!options.headers['Authorization']) options.headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        // token expirado / invalid -> limpiar y redirigir
+        localStorage.removeItem('token');
+        alert('Sesión expirada. Redirigiendo al inicio de sesión.');
+        window.location.href = 'index.html';
+        // lanzar para que quien llame deje de procesar
+        throw new Error('401 Unauthorized');
+    }
+    return res;
+}
+
+/* --- GLOBALES DE DATOS Y MAPA --- */
+const map = L.map('map', { minZoom: 5, attributionControl: false }).setView([4.5, -73.0], 6);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+}).addTo(map);
+
+let geojsonLayer = null;
+let metricsByName = new Map();
+let currentBreaks = [];
+let tipoUsoChart = null;
+let ingresoChart = null;
+
+/* --- Procesamiento de métricas --- */
 function ingestMetrics(metricsArray) {
     metricsByName.clear();
     let metricValues = [];
-    if (!Array.isArray(metricsArray)) return;
+    if (!Array.isArray(metricsArray)) return metricValues;
     for (const m of metricsArray) {
         const name = m.nameRegion;
         if (!name) continue;
         const n = normalizeName(name);
         metricsByName.set(n, m);
-        if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
-            metricValues.push(Number(m.indiceDesarrollo));
-        }
+        if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) metricValues.push(Number(m.indiceDesarrollo));
     }
     return metricValues;
 }
 
-/* ESTILO Y EVENTOS DEL MAPA */
+/* --- Map styling / events --- */
 function getRegionNameFromFeature(feature) {
     if (!feature || !feature.properties) return 'Región desconocida';
     return feature.properties.NOMBRE_DANE || feature.properties.NOMBRE || feature.properties.DeNombre || 'Región sin nombre';
@@ -343,11 +347,10 @@ function styleFeature(feature) {
     const normalized = normalizeName(deName);
     const metric = metricsByName.get(normalized);
     const value = metric ? metric.indiceDesarrollo : null;
-    const fillColor = getColorForValue(value, currentBreaks);
     return {
         weight: 1,
         color: '#FFFFFF',
-        fillColor: fillColor,
+        fillColor: getColorForValue(value, currentBreaks),
         fillOpacity: (value === null ? 0.4 : 0.9)
     };
 }
@@ -363,62 +366,51 @@ function resetHighlight(e) {
 }
 
 async function onFeatureClick(e) {
-    map.flyToBounds(e.target.getBounds(), { duration: 0.6, paddingTopLeft: L.point(384, 0) }); // Ajusta el zoom para considerar el sidebar
+    map.flyToBounds(e.target.getBounds(), { duration: 0.6, paddingTopLeft: L.point(384, 0) });
     const feature = e.target.feature;
     const deName = getRegionNameFromFeature(feature);
     const normalized = normalizeName(deName);
     const metric = metricsByName.get(normalized);
-
     if (!metric) {
         alert('No hay datos detallados para esta región con los filtros actuales.');
         return;
     }
-    
-    // Mostrar modal con loader
     toggleModal(true, 'Cargando detalles...');
-
     try {
         const q = buildFilterParams();
-        const res = await fetch(`${API_BASE}/api/archivos2/${archivoId}/regions/${metric.idRegion}${q}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/regions/${metric.idRegion}${q}`);
         if (!res.ok) throw new Error(`Error ${res.status} obteniendo detalle.`);
         const detail = await res.json();
         renderRegionDetail(feature, metric, detail);
     } catch (err) {
         console.error(err);
-        alert('Error al obtener detalle: ' + err.message);
-        toggleModal(false); // Ocultar modal si hay error
+        if (err.message !== '401 Unauthorized') {
+            alert('Error al obtener detalle: ' + err.message);
+            toggleModal(false);
+        }
     }
 }
 
 function onEachFeature(feature, layer) {
     const deName = getRegionNameFromFeature(feature);
     const metric = metricsByName.get(normalizeName(deName));
-    const value = metric && metric.indiceDesarrollo !== undefined ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A';
+    const value = (metric && metric.indiceDesarrollo !== undefined) ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A';
     layer.bindTooltip(`${deName}<br>Índice: <strong>${value}</strong>`, { sticky: true });
     layer.on({ mouseover: highlightFeature, mouseout: resetHighlight, click: onFeatureClick });
 }
 
-
-/* RENDERIZADO DE COMPONENTES UI */
-
+/* --- UI: leyenda y modal --- */
 function renderLegend(breaks) {
     const container = document.getElementById('legendItems');
     container.innerHTML = '';
     let lastBreak = 0;
-    
     if (breaks.length > 0) {
         const metricValues = Array.from(metricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null);
-        if (metricValues.length > 0) {
-           lastBreak = Math.min(...metricValues);
-        }
+        if (metricValues.length > 0) lastBreak = Math.min(...metricValues);
     }
-
     breaks.forEach((br, i) => {
         const label = `${Number(lastBreak).toFixed(2)} - ${Number(br).toFixed(2)}`;
-        lastBreak = br + 0.00001; // Para evitar solapamiento
-
+        lastBreak = br + 0.00001;
         const item = document.createElement('div');
         item.className = 'flex items-center space-x-2 text-sm';
         item.innerHTML = `
@@ -433,8 +425,6 @@ function renderLegend(breaks) {
 function renderRegionDetail(feature, metric, detail) {
     const name = getRegionNameFromFeature(feature);
     const indice = detail.indiceDesarrollo !== undefined ? Number(detail.indiceDesarrollo) : null;
-    
-    // Actualizar contenido del modal
     document.getElementById('modalRegionName').textContent = name;
     document.getElementById('modalIndice').textContent = indice !== null ? indice.toFixed(3) : 'N/A';
     document.getElementById('modalIndiceCategoria').textContent = indice !== null ? getCategoryForValue(indice, currentBreaks, CATEGORY_NAMES) : '';
@@ -442,7 +432,6 @@ function renderRegionDetail(feature, metric, detail) {
     document.getElementById('modalAvgHabilidades').textContent = detail.avgHabilidadesDigitales !== undefined ? Number(detail.avgHabilidadesDigitales).toFixed(2) : 'N/A';
     document.getElementById('modalBarreraCosto').textContent = detail.pctBarreraCosto !== undefined ? `${(Number(detail.pctBarreraCosto) * 100).toFixed(1)}%` : 'N/A';
 
-    // Razones para no tener internet
     const razonContainer = document.getElementById('modalRazonNoInternet');
     razonContainer.innerHTML = '';
     if (detail.razonNoInternetTop && Object.keys(detail.razonNoInternetTop).length > 0) {
@@ -455,81 +444,121 @@ function renderRegionDetail(feature, metric, detail) {
                 razonContainer.appendChild(li);
             }
         }
-        if (!hasReasons) {
-            razonContainer.innerHTML = '<li>No se reportaron barreras específicas en los hogares analizados.</li>';
-        }
+        if (!hasReasons) razonContainer.innerHTML = '<li>No se reportaron barreras específicas en los hogares analizados.</li>';
     } else {
         razonContainer.innerHTML = '<li>No hay datos disponibles.</li>';
     }
 
-    // Gráfica de Uso de Internet (Barras)
+    // Tipo de uso - barras
     const tipoUso = detail.tipoUsoCounts || {};
-    // Renombrar 'No Aplica'
-    if (tipoUso['No Aplica']) {
-        tipoUso['Sin Internet'] = tipoUso['No Aplica'];
-        delete tipoUso['No Aplica'];
-    }
-    const tipoKeys = Object.keys(tipoUso);
-    const tipoVals = Object.values(tipoUso);
-
+    if (tipoUso['No Aplica']) { tipoUso['Sin Internet'] = tipoUso['No Aplica']; delete tipoUso['No Aplica']; }
+    const tipoKeys = Object.keys(tipoUso), tipoVals = Object.values(tipoUso);
     const ctx1 = document.getElementById('tipoUsoCanvas').getContext('2d');
     if (tipoUsoChart) tipoUsoChart.destroy();
     tipoUsoChart = new Chart(ctx1, {
         type: 'bar',
-        data: {
-            labels: tipoKeys,
-            datasets: [{
-                label: 'Número de Hogares',
-                data: tipoVals,
-                backgroundColor: 'rgba(79, 70, 229, 0.8)',
-                borderColor: 'rgba(79, 70, 229, 1)',
-                borderWidth: 1
-            }]
-        },
+        data: { labels: tipoKeys, datasets: [{ label: 'Número de Hogares', data: tipoVals, backgroundColor: 'rgba(79, 70, 229, 0.8)', borderColor: 'rgba(79, 70, 229, 1)', borderWidth: 1 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
     });
 
-    // Gráfica de Ingresos (Torta/Pie)
+    // Ingresos - pie
     const ingresoDist = detail.ingresoDistribution || {};
-    const ingKeys = Object.keys(ingresoDist);
-    const ingVals = Object.values(ingresoDist);
+    const ingKeys = Object.keys(ingresoDist), ingVals = Object.values(ingresoDist);
     const ctx2 = document.getElementById('ingresoCanvas').getContext('2d');
     if (ingresoChart) ingresoChart.destroy();
     ingresoChart = new Chart(ctx2, {
         type: 'pie',
-        data: {
-            labels: ingKeys,
-            datasets: [{
-                data: ingVals,
-                backgroundColor: ['#d1fae5', '#a7f3d0', '#6ee7b7'], // Tonos de verde
-                hoverOffset: 4
-            }]
-        },
+        data: { labels: ingKeys, datasets: [{ data: ingVals, backgroundColor: ['#d1fae5', '#a7f3d0', '#6ee7b7'], hoverOffset: 4 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
     });
 }
 
+/* --- Mejor drag: pointer events, posición fixed y límites --- */
+function dragElement(elmnt) {
+    if (!elmnt) return;
+    const header = document.getElementById('modalHeader') || elmnt;
+    let isDown = false;
+    let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    // global flag for overlay click suppression
+    window.__isModalDragging = false;
+
+    header.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button')) return; // si clic en botón, no iniciar drag
+        e.preventDefault();
+        isDown = true;
+        window.__isModalDragging = true;
+        document.body.style.userSelect = 'none';
+        const rect = elmnt.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        startLeft = rect.left; startTop = rect.top;
+        // usar fixed y quitar transform para que left/top funcionen
+        elmnt.style.position = 'fixed';
+        elmnt.style.left = `${startLeft}px`;
+        elmnt.style.top = `${startTop}px`;
+        elmnt.style.transform = 'none';
+        elmnt.setPointerCapture && elmnt.setPointerCapture(e.pointerId);
+    });
+
+    document.addEventListener('pointermove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        let newLeft = startLeft + dx;
+        let newTop = startTop + dy;
+        // limitar dentro viewport
+        const maxLeft = Math.max(0, window.innerWidth - elmnt.offsetWidth);
+        const maxTop = Math.max(0, window.innerHeight - elmnt.offsetHeight);
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+        elmnt.style.left = `${newLeft}px`;
+        elmnt.style.top = `${newTop}px`;
+    });
+
+    document.addEventListener('pointerup', (e) => {
+        if (!isDown) return;
+        isDown = false;
+        try { elmnt.releasePointerCapture && elmnt.releasePointerCapture(e.pointerId); } catch {}
+        document.body.style.userSelect = '';
+        // pequeño retraso para evitar que el click final cierre el modal
+        setTimeout(() => { window.__isModalDragging = false; }, 50);
+    });
+}
+
+/* --- Modal show/hide con prioridad z y centrado --- */
 function toggleModal(show, title = '') {
-    const modal = document.getElementById('regionDetailModal');
+    const modalOverlay = document.getElementById('regionDetailModal');
     const modalContent = document.getElementById('modalContent');
+
+    // Forzar z-index elevado (por si Leaflet usa z más alto)
+    modalOverlay.style.zIndex = '99999';
+    modalContent.style.zIndex = '100000';
+
     if (show) {
-        document.getElementById('modalRegionName').textContent = title;
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        setTimeout(() => {
-            modalContent.classList.remove('scale-95', 'opacity-0');
-        }, 50); // Pequeño delay para la transición
+        if (title) document.getElementById('modalRegionName').textContent = title;
+        modalOverlay.classList.remove('hidden');
+
+        // Centrar usando fixed + transform al abrir
+        modalContent.style.position = 'fixed';
+        modalContent.style.left = '50%';
+        modalContent.style.top = '50%';
+        modalContent.style.transform = 'translate(-50%, -50%)';
+        modalContent.classList.remove('opacity-0', 'scale-95');
+        modalContent.style.transition = 'transform 0.25s ease, opacity 0.25s ease';
     } else {
-        modalContent.classList.add('scale-95', 'opacity-0');
+        modalContent.classList.add('opacity-0', 'scale-95');
         setTimeout(() => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }, 300); // Duración de la transición
+            modalOverlay.classList.add('hidden');
+            // limpiar estilos inline para dejar listo para el próximo open
+            modalContent.style.transform = '';
+            modalContent.style.left = '';
+            modalContent.style.top = '';
+            modalContent.style.position = '';
+        }, 250);
     }
 }
 
-
-/* FUNCIÓN PRINCIPAL DE CARGA */
+/* --- Carga y renderizado del mapa --- */
 async function loadAndRenderMap() {
     const loadingOverlay = document.createElement('div');
     loadingOverlay.innerHTML = `<div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-30"><div class="text-center"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div><p class="mt-4 text-gray-600 font-semibold">Cargando datos del mapa...</p></div></div>`;
@@ -537,59 +566,56 @@ async function loadAndRenderMap() {
 
     try {
         const q = buildFilterParams();
-        const resM = await fetch(`${API_BASE}/api/archivos2/${archivoId}/map${q}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const resM = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map${q}`);
         if (!resM.ok) throw new Error(`Error al pedir métricas: ${resM.status}`);
         const metrics = await resM.json();
         const metricValues = ingestMetrics(metrics);
-        
+
         currentBreaks = computeQuantileBreaks(metricValues, BUCKETS);
         renderLegend(currentBreaks);
 
-        const resG = await fetch(GEOJSON_URL, { headers: { 'Authorization': `Bearer ${token}` } });
+        const resG = await fetchWithAuth(GEOJSON_URL);
         if (!resG.ok) throw new Error(`GeoJSON no encontrado: ${resG.status}`);
         const geojson = await resG.json();
 
         if (geojsonLayer) map.removeLayer(geojsonLayer);
         geojsonLayer = L.geoJson(geojson, { style: styleFeature, onEachFeature }).addTo(map);
-        if (geojsonLayer.getBounds().isValid()) {
-             map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
-        }
+        if (geojsonLayer.getBounds().isValid()) map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
     } catch (err) {
         console.error(err);
-        alert('Error cargando mapa: ' + err.message);
+        if (err.message !== '401 Unauthorized') alert('Error cargando mapa: ' + err.message);
     } finally {
-        if(document.body.contains(loadingOverlay)) {
-            document.body.removeChild(loadingOverlay);
-        }
+        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
     }
 }
 
-/* CABLEADO DE EVENTOS */
+/* --- Eventos DOM (overlay click con protección contra drag) --- */
 document.getElementById('refreshBtn').addEventListener('click', loadAndRenderMap);
 document.getElementById('closeModalBtn').addEventListener('click', () => toggleModal(false));
 document.getElementById('regionDetailModal').addEventListener('click', (e) => {
-    if (e.target.id === 'regionDetailModal') {
-        toggleModal(false);
-    }
+    // Si se está arrastrando, ignorar el click que podría venir por pointerup
+    if (window.__isModalDragging) return;
+    if (e.target.id === 'regionDetailModal') toggleModal(false);
 });
 
-
-/* CARGA INICIAL */
+/* --- Inicio (fetch user + mapa) --- */
 (async function init() {
     try {
-        const r = await fetch(`${API_BASE}/api/auth/me`, { headers: {'Authorization': `Bearer ${token}`} });
+        const r = await fetchWithAuth(`${API_BASE}/api/auth/me`);
         if (r.ok) {
             const u = await r.json();
             if (u && u.email) document.getElementById('userEmail').innerText = u.email;
         }
-    } catch(e) { console.error("Could not fetch user email", e); }
-    
-    loadAndRenderMap();
-})();
+    } catch(e) {
+        console.error("Could not fetch user email", e);
+    }
 
+    await loadAndRenderMap();
+    // Inicializar arrastre
+    dragElement(document.getElementById("modalContent"));
+})();
 </script>
+
 </body>
 </html>
 
