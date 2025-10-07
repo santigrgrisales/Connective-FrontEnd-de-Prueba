@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale-1.0">
+  <title>Dashboard — Brecha Digital en Colombia</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* Estilos base y para Leaflet */
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc; /* gris muy claro */
+    }
+    .leaflet-container {
+      height: 100%;
+      width: 100%;
+      border-radius: 0.5rem;
+    }
+    
+    #map {
+        position: relative;
+        z-index: 10;
+    }
+    
+    .leaflet-tooltip {
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        font-weight: 600;
+        padding: 8px 12px;
+    }
+    /* Scrollbar personalizado para el sidebar */
+    #sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+    #sidebar::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    #sidebar::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 6px;
+    }
+    #sidebar::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
+    .chart-canvas {
+      width: 100% !important;
+      height: 200px !important;
+    }
+
+    .dragging {
+        transition: none !important;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen">
+
+  <!-- Header -->
+  <header class="bg-white shadow-md z-20">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <h1 class="text-xl font-bold text-gray-800 ml-3">Análisis de Brecha Digital</h1>
+        </div>
+        <div class="text-right">
+          <div id="userEmail" class="text-sm font-medium text-gray-700"></div>
+          <div class="text-xs text-gray-500">Archivo: <span id="archivoId" class="font-semibold">-</span></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-grow flex flex-col md:flex-row overflow-hidden">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-full md:w-96 bg-white p-6 overflow-y-auto border-r border-gray-200">
+      <div class="space-y-6">
+        <!-- Filtros -->
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 border-b pb-2 mb-4">Filtros Globales</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 gap-4">
+            <div>
+              <label for="fEdad" class="block text-sm font-medium text-gray-700">Rango de Edad</label>
+              <select id="fEdad" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                <option value="">Todas</option><option value="5-14">5-14 años</option><option value="15-24">15-24 años</option><option value="25-60">25-60 años</option><option value="mayores_60">>60 años</option>
+              </select>
+            </div>
+            <div>
+              <label for="fGenero" class="block text-sm font-medium text-gray-700">Género</label>
+              <select id="fGenero" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                <option value="">Todos</option><option value="Mujer">Mujer</option><option value="Hombre">Hombre</option>
+              </select>
+            </div>
+            <div>
+              <label for="fIngreso" class="block text-sm font-medium text-gray-700">Categoría de Ingreso</label>
+              <select id="fIngreso" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                <option value="">Todos</option><option value="Bajo">Bajo</option><option value="Medio">Medio</option><option value="Alto">Alto</option>
+              </select>
+            </div>
+              <div>
+              <label for="fMinHabs" class="block text-sm font-medium text-gray-700">Nivel Mínimo de Habilidades Digitales</label>
+              <select id="fMinHabs" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                <option value="">Cualquiera</option>
+                <option value="0">Nivel 0: Sin Habilidades</option>
+                <option value="1">Nivel 1: Básico</option>
+                <option value="2">Nivel 2: Intermedio-Bajo</option>
+                <option value="3">Nivel 3: Intermedio-Alto</option>
+                <option value="4">Nivel 4: Avanzado</option>
+                <option value="5">Nivel 5: Experto</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-4 flex items-center">
+            <input id="fBarreraCosto" type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+            <label for="fBarreraCosto" class="ml-2 block text-sm text-gray-900">Mostrar solo hogares sin internet por costo</label>
+          </div>
+          <button id="refreshBtn" class="mt-6 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            Aplicar Filtros
+          </button>
+        </div>
+
+        <!-- Leyenda -->
+        <div id="legendContainer">
+          <h3 class="text-md font-semibold text-gray-900">Índice de Desarrollo Digital</h3>
+          <div id="legendItems" class="mt-2 space-y-1"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Map Area -->
+    <div class="flex-grow p-4 bg-gray-50">
+      <div id="map" class="shadow-lg"></div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t">
+      <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-2 text-center text-sm text-gray-500">
+          Dashboard Interactivo de Brecha Digital. Haz clic en un departamento para ver detalles.
+      </div>
+  </footer>
+
+  <!-- Modal para detalles de la región -->
+  <div id="regionDetailModal" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-50 hidden">
+      <div id="modalContent" class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col absolute transition-all duration-300 opacity-0 scale-95">
+          <!-- Modal Header -->
+          <div id="modalHeader" class="flex items-center justify-between p-5 border-b rounded-t cursor-move">
+              <h3 id="modalRegionName" class="text-2xl font-bold text-gray-900"></h3>
+              <button type="button" id="closeModalBtn" class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center">
+                  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+              </button>
+          </div>
+          <!-- Modal Body -->
+          <div class="p-6 space-y-6 overflow-y-auto">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                  <div class="bg-gray-50 p-4 rounded-lg">
+                      <div class="text-sm text-gray-600">Índice de Desarrollo Digital del Departamento</div>
+                      <div id="modalIndice" class="text-3xl font-bold text-indigo-600"></div>
+                      <div id="modalIndiceCategoria" class="text-sm font-semibold text-gray-700"></div>
+                  </div>
+                  <div class="bg-gray-50 p-4 rounded-lg">
+                      <div class="text-sm text-gray-600">Hogares Analizados</div>
+                      <div id="modalTotalHogares" class="text-3xl font-bold text-indigo-600"></div>
+                  </div>
+                  <div class="bg-gray-50 p-4 rounded-lg">
+                      <div class="text-sm text-gray-600">Promedio Habilidades Digitales</div>
+                      <div id="modalAvgHabilidades" class="text-3xl font-bold text-indigo-600"></div>
+                  </div>
+              </div>
+
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4">
+                  <!-- Columna Izquierda: Gráficas -->
+                  <div class="space-y-6">
+                      <div>
+                          <h4 class="text-lg font-semibold text-gray-800 mb-2">Principales Usos de Internet</h4>
+                          <div class="bg-white p-4 rounded-lg shadow-sm border"><canvas id="tipoUsoCanvas" class="chart-canvas"></canvas></div>
+                      </div>
+                      <div>
+                          <h4 class="text-lg font-semibold text-gray-800 mb-2">Distribución de Ingresos del Hogar</h4>
+                          <div class="bg-white p-4 rounded-lg shadow-sm border"><canvas id="ingresoCanvas" class="chart-canvas"></canvas></div>
+                      </div>
+                  </div>
+                  <!-- Columna Derecha: Datos adicionales -->
+                  <div class="space-y-6">
+                      <div>
+                          <h4 class="text-lg font-semibold text-gray-800 mb-2">Acceso a Internet</h4>
+                          <div class="bg-white p-4 rounded-lg shadow-sm border space-y-3">
+                              <div>
+                                  <div class="font-semibold text-gray-700">Barrera de Costo</div>
+                                  <p class="text-sm text-gray-600">Porcentaje de hogares en la región que no tienen acceso a internet debido a su alto costo.</p>
+                                  <div id="modalBarreraCosto" class="text-2xl font-bold text-red-600 mt-1"></div>
+                              </div>
+                              <hr>
+                              <div>
+                                  <div class="font-semibold text-gray-700">Principales Razones para no tener Internet</div>
+                                  <ul id="modalRazonNoInternet" class="list-disc list-inside mt-2 text-sm text-gray-800 space-y-1"></ul>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- MEJORA 2.1: Contenedor para las notificaciones Toast -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-[100] w-full max-w-xs space-y-3">
+      <!-- Los Toasts se añadirán aquí dinámicamente -->
+  </div>
+
+
+  <!-- Leaflet + Chart.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+/* CONFIGURACIÓN */
+const API_BASE = 'http://localhost:8081';
+const GEOJSON_URL = `${API_BASE}/colombia_departments.geojson`;
+const BUCKETS = 5;
+const PALETTE = ['#fee5d9', '#fcae91', '#fb6a4a', '#de2d26', '#a50f15']; // Paleta de Rojos
+const CATEGORY_NAMES = ['Muy Bajo', 'Bajo', 'Medio', 'Alto', 'Muy Alto']; // Nombres para la leyenda
+
+const params = new URLSearchParams(window.location.search);
+const archivoId = params.get('id');
+
+if (!archivoId) {
+    // MEJORA 2.2: Reemplazo de alert por toast
+    showToast('Falta el ID del archivo en la URL.', 'error');
+}
+
+document.getElementById('archivoId').innerText = archivoId || '(ninguno)';
+
+async function fetchWithAuth(url, options = {}) {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+        showToast('No se encontró un token. Redirigiendo...', 'error');
+        setTimeout(() => window.location.href = '../index.html', 2000);
+        return Promise.reject(new Error('No hay token'));
+    }
+
+    const headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+
+    const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('token');
+        showToast('Tu sesión ha expirado. Redirigiendo...', 'warning');
+        setTimeout(() => window.location.href = '../index.html', 2000);
+        return Promise.reject(new Error('Token expirado o inválido.'));
+    }
+
+    return response;
+}
+
+
+/* INICIALIZACIÓN DEL MAPA */
+const map = L.map('map', { minZoom: 5, attributionControl: false }).setView([4.5, -73.0], 6);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+}).addTo(map);
+
+/* GLOBALES */
+let geojsonLayer = null;
+let metricsByName = new Map();
+let tipoUsoChart = null;
+let ingresoChart = null;
+let originalMetricsByName = new Map();
+let fixedBreaks = [];
+
+/* FUNCIONES AUXILIARES */
+
+// MEJORA 2.3: Función para mostrar notificaciones Toast
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const icons = {
+        info: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`,
+        warning: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`,
+        error: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+    };
+    const colors = {
+        info: 'bg-blue-500',
+        warning: 'bg-yellow-500',
+        error: 'bg-red-600'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `flex items-center w-full max-w-xs p-4 space-x-3 text-white ${colors[type]} rounded-lg shadow-lg transform translate-x-full opacity-0 transition-all duration-300 ease-in-out`;
+    
+    toast.innerHTML = `
+        <div class="flex-shrink-0">${icons[type]}</div>
+        <div class="flex-1 text-sm font-medium">${message}</div>
+        <button type="button" class="p-1.5 -m-1.5 ml-2 rounded-md hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.remove('translate-x-full', 'opacity-0');
+    }, 50);
+
+    const removeToast = () => {
+        toast.classList.add('opacity-0', 'translate-x-full');
+        setTimeout(() => toast.remove(), 300);
+    };
+
+    toast.querySelector('button').addEventListener('click', removeToast);
+    setTimeout(removeToast, 5000);
+}
+
+
+function normalizeName(s) {
+    if (s == null) return null;
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function buildFilterParams() {
+    const p = new URLSearchParams();
+    const fields = {
+        'edad': 'fEdad',
+        'genero': 'fGenero',
+        'ingresoCategoria': 'fIngreso',
+        'minIndiceHabilidades': 'fMinHabs'
+    };
+    for (const [param, id] of Object.entries(fields)) {
+        const value = document.getElementById(id).value;
+        if (value) p.set(param, value);
+    }
+    if (document.getElementById('fBarreraCosto').checked) {
+        p.set('onlyBarreraCosto', 'true');
+    }
+    return p.toString() ? '?' + p.toString() : '';
+}
+
+function computeQuantileBreaks(values, buckets) {
+    if (!values || !values.length) return Array(buckets).fill(0);
+    const sorted = values.slice().filter(v => v !== null && !isNaN(v)).sort((a, b) => a - b);
+    if (sorted.length === 0) return Array(buckets).fill(0);
+    
+    const uniqueValues = [...new Set(sorted)];
+    if (uniqueValues.length <= buckets) {
+        const min = sorted[0];
+        const max = sorted[sorted.length - 1];
+        if (min === max) return Array.from({length: buckets}, (_, i) => min + i * 1e-6);
+        const step = (max - min) / buckets;
+        return Array.from({length: buckets}, (_, i) => min + (i + 1) * step);
+    }
+
+    const breaks = [];
+    for (let i = 1; i <= buckets; i++) {
+        const q = i / buckets;
+        const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length) - 1);
+        breaks.push(sorted[Math.max(0, idx)]);
+    }
+    for (let i = 1; i < breaks.length; i++) {
+        if (breaks[i] <= breaks[i-1]) breaks[i] = breaks[i-1] + 1e-6;
+    }
+    return breaks;
+}
+
+
+function getCategoryForValue(value, breaks, categories) {
+    if (value === null || value === undefined || isNaN(value)) return 'Sin datos';
+    for (let i = 0; i < breaks.length; i++) {
+        if (value <= breaks[i]) return categories[i];
+    }
+    return categories[categories.length - 1];
+}
+
+function getColorForValue(v, breaks) {
+    if (v === null || v === undefined || isNaN(v)) return '#D1D5DB'; // gris para sin datos
+    const category = getCategoryForValue(v, breaks, CATEGORY_NAMES);
+    const index = CATEGORY_NAMES.indexOf(category);
+    return PALETTE[index] || '#D1D5DB';
+}
+
+/* PROCESAMIENTO DE DATOS */
+function ingestMetrics(metricsArray) {
+    metricsByName.clear();
+    if (!Array.isArray(metricsArray)) return;
+    for (const m of metricsArray) {
+        const name = m.nameRegion;
+        if (!name) continue;
+        const n = normalizeName(name);
+        metricsByName.set(n, m);
+    }
+}
+
+/* ESTILO Y EVENTOS DEL MAPA */
+function getRegionNameFromFeature(feature) {
+    if (!feature || !feature.properties) return 'Región desconocida';
+    return feature.properties.NOMBRE_DANE || feature.properties.NOMBRE || feature.properties.DeNombre || 'Región sin nombre';
+}
+
+function styleFeature(feature) {
+    const deName = getRegionNameFromFeature(feature);
+    const normalized = normalizeName(deName);
+    const isFilteredOut = !metricsByName.has(normalized);
+
+    // MEJORA 1: Lógica de visualización para regiones filtradas
+    // Si la región no cumple el filtro, se pinta de un gris neutro.
+    if (isFilteredOut) {
+        return {
+            weight: 1,
+            color: '#FFFFFF',
+            fillColor: '#E5E7EB', // Gris neutro (Tailwind gray-200)
+            fillOpacity: 0.5
+        };
+    }
+
+    // Si la región SÍ cumple el filtro, se usa la lógica original.
+    const originalMetric = originalMetricsByName.get(normalized);
+    const value = originalMetric ? originalMetric.indiceDesarrollo : null;
+    const fillColor = getColorForValue(value, fixedBreaks);
+
+    return {
+        weight: 1,
+        color: '#FFFFFF',
+        fillColor: fillColor,
+        fillOpacity: (value === null ? 0.4 : 0.9)
+    };
+}
+
+function highlightFeature(e) {
+    const layer = e.target;
+    layer.setStyle({ weight: 3, color: '#333', fillOpacity: 1 });
+    layer.bringToFront();
+}
+
+function resetHighlight(e) {
+    if (geojsonLayer) geojsonLayer.resetStyle(e.target);
+}
+
+async function onFeatureClick(e) {
+    map.flyToBounds(e.target.getBounds(), { duration: 0.6, paddingTopLeft: L.point(384, 0) });
+    const feature = e.target.feature;
+    const deName = getRegionNameFromFeature(feature);
+    const normalized = normalizeName(deName);
+    
+    const currentFilteredMetric = metricsByName.get(normalized);
+
+    if (!currentFilteredMetric) {
+        showToast('Esta región no cumple con los filtros aplicados.', 'info');
+        return;
+    }
+    
+    toggleModal(true, 'Cargando detalles...');
+
+    try {
+        const q = buildFilterParams();
+        const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/regions/${currentFilteredMetric.idRegion}${q}`);
+        if (!res.ok) throw new Error(`Error ${res.status} obteniendo detalle.`);
+        const detail = await res.json();
+        renderRegionDetail(feature, detail);
+    } catch (err) {
+        console.error("Error en onFeatureClick:", err);
+        if (err.message.indexOf('Token') === -1) {
+            showToast('Error al obtener detalle: ' + err.message, 'error');
+            toggleModal(false);
+        }
+    }
+}
+
+function onEachFeature(feature, layer) {
+    const deName = getRegionNameFromFeature(feature);
+    const originalMetric = originalMetricsByName.get(normalizeName(deName));
+    const value = originalMetric && originalMetric.indiceDesarrollo !== undefined ? Number(originalMetric.indiceDesarrollo).toFixed(3) : 'N/A';
+    
+    layer.bindTooltip(`${deName}<br>Índice: <strong>${value}</strong>`, { sticky: true });
+    layer.on({ mouseover: highlightFeature, mouseout: resetHighlight, click: onFeatureClick });
+}
+
+
+/* RENDERIZADO DE COMPONENTES UI */
+function renderLegend(breaks) {
+    const container = document.getElementById('legendItems');
+    container.innerHTML = '';
+    
+    const metricValues = Array.from(originalMetricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null && !isNaN(v));
+    let lastBreak = metricValues.length > 0 ? Math.min(...metricValues) : 0;
+
+    breaks.forEach((br, i) => {
+        const label = `${Number(lastBreak).toFixed(2)} - ${Number(br).toFixed(2)}`;
+        lastBreak = br + 0.00001;
+
+        const item = document.createElement('div');
+        item.className = 'flex items-center space-x-2 text-sm';
+        item.innerHTML = `
+            <span class="h-4 w-4 rounded" style="background-color: ${PALETTE[i]};"></span>
+            <span class="font-semibold text-gray-700 w-20">${CATEGORY_NAMES[i]}</span>
+            <span class="text-gray-500">(${label})</span>
+        `;
+        container.appendChild(item);
+    });
+}
+
+function renderRegionDetail(feature, detail) {
+    const name = getRegionNameFromFeature(feature);
+    const normalizedName = normalizeName(name);
+
+    const originalMetric = originalMetricsByName.get(normalizedName);
+    const originalIndice = originalMetric ? Number(originalMetric.indiceDesarrollo) : null;
+    
+    document.getElementById('modalRegionName').textContent = name;
+    document.getElementById('modalIndice').textContent = originalIndice !== null ? originalIndice.toFixed(3) : 'N/A';
+    document.getElementById('modalIndiceCategoria').textContent = originalIndice !== null ? getCategoryForValue(originalIndice, fixedBreaks, CATEGORY_NAMES) : '';
+
+    document.getElementById('modalTotalHogares').textContent = detail.totalHogares || 'N/A';
+    document.getElementById('modalAvgHabilidades').textContent = detail.avgHabilidadesDigitales !== undefined ? Number(detail.avgHabilidadesDigitales).toFixed(2) : 'N/A';
+    document.getElementById('modalBarreraCosto').textContent = detail.pctBarreraCosto !== undefined ? `${(Number(detail.pctBarreraCosto) * 100).toFixed(1)}%` : 'N/A';
+
+    const razonContainer = document.getElementById('modalRazonNoInternet');
+    razonContainer.innerHTML = '';
+    if (detail.razonNoInternetTop && Object.keys(detail.razonNoInternetTop).length > 0) {
+        let hasReasons = false;
+        for (const [razon, count] of Object.entries(detail.razonNoInternetTop)) {
+            if (razon.toLowerCase() !== 'no aplica') {
+                hasReasons = true;
+                const li = document.createElement('li');
+                li.textContent = `${razon}: ${count} hogares`;
+                razonContainer.appendChild(li);
+            }
+        }
+        if (!hasReasons) {
+            razonContainer.innerHTML = '<li>No se reportaron barreras específicas en los hogares analizados.</li>';
+        }
+    } else {
+        razonContainer.innerHTML = '<li>No hay datos disponibles.</li>';
+    }
+
+    const tipoUso = detail.tipoUsoCounts || {};
+    if (tipoUso['No Aplica']) {
+        tipoUso['Sin Internet'] = tipoUso['No Aplica'];
+        delete tipoUso['No Aplica'];
+    }
+    const tipoKeys = Object.keys(tipoUso);
+    const tipoVals = Object.values(tipoUso);
+
+    const ctx1 = document.getElementById('tipoUsoCanvas').getContext('2d');
+    if (tipoUsoChart) tipoUsoChart.destroy();
+    tipoUsoChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+            labels: tipoKeys,
+            datasets: [{
+                label: 'Número de Hogares',
+                data: tipoVals,
+                backgroundColor: 'rgba(79, 70, 229, 0.8)',
+                borderColor: 'rgba(79, 70, 229, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    });
+
+    const ingresoDist = detail.ingresoDistribution || {};
+    const ingKeys = Object.keys(ingresoDist);
+    const ingVals = Object.values(ingresoDist);
+    const ctx2 = document.getElementById('ingresoCanvas').getContext('2d');
+    if (ingresoChart) ingresoChart.destroy();
+    ingresoChart = new Chart(ctx2, {
+        type: 'pie',
+        data: {
+            labels: ingKeys,
+            datasets: [{
+                data: ingVals,
+                backgroundColor: ['#d1fae5', '#a7f3d0', '#6ee7b7'],
+                hoverOffset: 4
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+    });
+}
+
+function dragElement(elmnt) {
+  let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+  const header = document.getElementById("modalHeader");
+
+  if (header) {
+    header.onmousedown = dragMouseDown;
+  } else {
+    elmnt.onmousedown = dragMouseDown;
+  }
+
+  function dragMouseDown(e) {
+    e = e || window.event;
+    if (e.target.closest('button')) {
+        return;
+    }
+    e.preventDefault();
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    
+    elmnt.classList.add('dragging');
+
+    document.onmouseup = closeDragElement;
+    document.onmousemove = elementDrag;
+  }
+
+  function elementDrag(e) {
+    e = e || window.event;
+    e.preventDefault();
+    pos1 = pos3 - e.clientX;
+    pos2 = pos4 - e.clientY;
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    
+    const newTop = Math.max(0, Math.min(window.innerHeight - elmnt.offsetHeight, elmnt.offsetTop - pos2));
+    const newLeft = Math.max(0, Math.min(window.innerWidth - elmnt.offsetWidth, elmnt.offsetLeft - pos1));
+
+    elmnt.style.top = newTop + "px";
+    elmnt.style.left = newLeft + "px";
+  }
+
+  function closeDragElement() {
+    elmnt.classList.remove('dragging');
+    document.onmouseup = null;
+    document.onmousemove = null;
+  }
+}
+
+function toggleModal(show, title = '') {
+    const modalOverlay = document.getElementById('regionDetailModal');
+    const modalContent = document.getElementById('modalContent');
+    if (show) {
+        document.getElementById('modalRegionName').textContent = title;
+        modalOverlay.classList.remove('hidden');
+
+        modalContent.style.left = `calc(50% - ${modalContent.offsetWidth / 2}px)`;
+        modalContent.style.top = `calc(50% - ${modalContent.offsetHeight / 2}px)`;
+
+        setTimeout(() => { 
+            modalContent.classList.remove('opacity-0', 'scale-95');
+        }, 50);
+
+    } else {
+        modalContent.classList.add('opacity-0', 'scale-95');
+        setTimeout(() => {
+            modalOverlay.classList.add('hidden');
+        }, 300); 
+    }
+}
+
+async function initializeDashboardData() {
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map`);
+        if (!res.ok) throw new Error(`Error al pedir métricas originales: ${res.status}`);
+        const originalMetrics = await res.json();
+        
+        const originalMetricValues = [];
+        if (Array.isArray(originalMetrics)) {
+            for (const m of originalMetrics) {
+                const name = m.nameRegion;
+                if (!name) continue;
+                originalMetricsByName.set(normalizeName(name), m);
+                if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
+                    originalMetricValues.push(Number(m.indiceDesarrollo));
+                }
+            }
+        }
+        
+        fixedBreaks = computeQuantileBreaks(originalMetricValues, BUCKETS);
+        renderLegend(fixedBreaks);
+        
+    } catch (err) {
+        console.error("Error inicializando datos del dashboard:", err);
+        if (err.message.indexOf('Token') === -1) {
+            showToast('Error crítico al cargar datos base: ' + err.message, 'error');
+        }
+    }
+}
+
+
+async function loadAndRenderMap() {
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.innerHTML = `<div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-30"><div class="text-center"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div><p class="mt-4 text-gray-600 font-semibold">Cargando datos del mapa...</p></div></div>`;
+    document.body.appendChild(loadingOverlay);
+
+    try {
+        const q = buildFilterParams();
+        const resM = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map${q}`);
+        if (!resM.ok) throw new Error(`Error al pedir métricas: ${resM.status}`);
+        const metrics = await resM.json();
+        ingestMetrics(metrics);
+        
+        const resG = await fetchWithAuth(GEOJSON_URL);
+        if (!resG.ok) throw new Error(`GeoJSON no encontrado: ${resG.status}`);
+        const geojson = await resG.json();
+
+        if (geojsonLayer) map.removeLayer(geojsonLayer);
+        geojsonLayer = L.geoJson(geojson, { style: styleFeature, onEachFeature }).addTo(map);
+        if (geojsonLayer.getBounds().isValid()) {
+             map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+        }
+    } catch (err) {
+        console.error("Error en loadAndRenderMap:", err);
+        if (err.message.indexOf('Token') === -1) {
+          showToast('Error cargando mapa: ' + err.message, 'error');
+        }
+    } finally {
+        if(document.body.contains(loadingOverlay)) {
+            document.body.removeChild(loadingOverlay);
+        }
+    }
+}
+
+/* CABLEADO DE EVENTOS */
+document.getElementById('refreshBtn').addEventListener('click', loadAndRenderMap);
+document.getElementById('closeModalBtn').addEventListener('click', () => toggleModal(false));
+document.getElementById('regionDetailModal').addEventListener('click', (e) => {
+    if (e.target.id === 'regionDetailModal') {
+        toggleModal(false);
+    }
+});
+
+
+/* CARGA INICIAL */
+(async function init() {
+    try {
+        const r = await fetchWithAuth(`${API_BASE}/api/auth/me`);
+        if (r.ok) {
+            const u = await r.json();
+            if (u && u.email) document.getElementById('userEmail').innerText = u.email;
+        }
+    } catch(e) { 
+      if (e.message.indexOf('Token') === -1) {
+        console.error("No se pudo obtener el email del usuario", e); 
+      }
+    }
+    
+    await initializeDashboardData();
+    await loadAndRenderMap();
+    
+    dragElement(document.getElementById("modalContent"));
+})();
+
+</script>
+</body>
+</html>
+

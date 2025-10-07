@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Connective+ — Panel de Administración</title>
+  <link rel="stylesheet" href="../admin/admin._styles.css"/>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <img src="../src/logo1.png" alt="Logo Connective+" class="logo"/>
+      <h1 class="brand-name">Connective+</h1>
+    </div>
+
+    <h2>Panel de Administración</h2>
+    <p>Bienvenido, esta es la vista de administrador. Aquí puedes importar CSV y ver archivos.</p>
+
+    <div class="form-section">
+      <input type="file" id="fileInput" accept=".csv"><br>
+      <input type="text" id="nombreArchivo" placeholder="Nombre archivo (opcional)"><br>
+      <input type="text" id="descripcion" placeholder="Descripción (opcional)"><br>
+      <button id="uploadBtn">Subir CSV</button>
+      <p id="status"></p>
+    </div>
+
+    <h3>Archivos Cargados</h3>
+    <table id="archivosTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Descripción</th>
+          <th>Fecha Cargada</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="logout">
+      <button onclick="logout()">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <!-- Panel de accesibilidad -->
+  <div id="accessibilityPanel" class="accessibility-panel">
+    <button id="accessibilityToggle" class="accessibility-btn">⚙️</button>
+    <div id="accessibilityOptions" class="accessibility-options hidden">
+      <button id="darkToggle">🌙 Modo oscuro</button>
+      <button id="increaseText">A+</button>
+      <button id="decreaseText">A-</button>
+      <button id="resetText">A=</button>
+    </div>
+  </div>
+
+  <script src="../admin/admin_script.js"></script>
+</body>
+</html>

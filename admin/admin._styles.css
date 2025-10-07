@@ -1,0 +1,146 @@
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: var(--bg, #f7f8fa);
+  color: var(--text, #222);
+  margin: 0;
+  padding: 0;
+  transition: background 0.3s, color 0.3s;
+}
+
+.card {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 25px 30px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  border-radius: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+}
+
+.brand-name {
+  font-size: 1.4rem;
+  color: var(--text, #222);
+}
+
+h2, h3 {
+  color: var(--text, #222);
+}
+
+input, button {
+  font-size: 1rem;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+button {
+  background: var(--primary, #005fa3);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+button:hover {
+  background: var(--primary-hover, #004c82);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 20px;
+  font-size: 0.95rem;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: left;
+}
+
+th {
+  background: var(--table-header, #f2f2f2);
+}
+
+/* Logout */
+.logout {
+  text-align: center;
+  margin-top: 20px;
+}
+.logout button {
+  width: auto;
+}
+
+/* Panel de accesibilidad */
+.accessibility-panel {
+  position: fixed;
+  bottom: 25px;
+  right: 25px;
+}
+
+.accessibility-btn {
+  background: var(--primary, #005fa3);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+}
+
+.accessibility-options {
+  margin-top: 10px;
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.accessibility-options button {
+  background: var(--primary, #005fa3);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.hidden {
+  display: none;
+}
+
+/* 🌙 Modo oscuro */
+body.dark {
+  --bg: #121212;
+  --text: #e0e0e0;
+  --card-bg: #1e1e1e;
+  --primary: #4a90e2;
+  --primary-hover: #367ac9;
+  --table-header: #252525;
+}
+
+body.dark button {
+  color: #fff;
+}

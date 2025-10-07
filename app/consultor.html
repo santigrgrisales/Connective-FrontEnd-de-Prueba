@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Connective+ — Panel del Consultor</title>
+  <link rel="stylesheet" href="../consultor/consultor_styles.css"/>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <img src="../src/logo1.png" alt="Logo Connective+" class="logo"/>
+      <h1 class="brand-name">Connective+</h1>
+    </div>
+
+    <h2>Panel del Consultor</h2>
+    <p>
+      Este panel forma parte del sistema de apoyo a la decisión (DSS) para el 
+      <strong>Análisis de Brechas y Priorización de Inversiones</strong>.
+      Su objetivo es identificar regiones y grupos poblacionales con menor nivel de desarrollo digital 
+      para orientar las inversiones de inclusión tecnológica de manera eficiente.
+    </p>
+
+    <div class="context-box">
+      <h3>Funcionalidades del DSS</h3>
+      <ul>
+        <li><strong>Mapas Interactivos:</strong> Visualización geográfica de las regiones del país según su nivel de desarrollo digital.</li>
+        <li><strong>Segmentación de la Población:</strong> Filtrado por edad, género y nivel de ingresos para analizar la brecha digital en distintos grupos.</li>
+        <li><strong>Motor de Priorización:</strong> Algoritmo que sugiere las áreas que requieren inversión prioritaria para maximizar el impacto en la inclusión digital.</li>
+      </ul>
+    </div>
+
+    <h3>Archivos Disponibles para Análisis</h3>
+    <table id="archivosTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Descripción</th>
+          <th>Fecha Cargada</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="logout">
+      <button onclick="logout()">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <!-- Panel de accesibilidad -->
+  <div id="accessibilityPanel" class="accessibility-panel">
+    <button id="accessibilityToggle" class="accessibility-btn">⚙️</button>
+    <div id="accessibilityOptions" class="accessibility-options hidden">
+      <button id="darkToggle">🌙 Modo oscuro</button>
+      <button id="increaseText">A+</button>
+      <button id="decreaseText">A-</button>
+      <button id="resetText">A=</button>
+    </div>
+  </div>
+
+  <script src="../consultor/consultor_script.js"></script>
+</body>
+</html>
