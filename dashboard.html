@@ -28,9 +28,6 @@
       border-radius: 0.5rem;
     }
     
-    /* SOLUCIÓN 1: Asegurar que el mapa quede por debajo del modal. */
-    /* Le damos una posición relativa para que el z-index funcione correctamente */
-    /* y un z-index más bajo que el del modal (que es z-50). */
     #map {
         position: relative;
         z-index: 10;
@@ -63,8 +60,6 @@
       height: 200px !important;
     }
 
-    /* SOLUCIÓN 2.1: Clase para deshabilitar la transición mientras se arrastra. */
-    /* Esto hace que el movimiento sea instantáneo y fluido. */
     .dragging {
         transition: none !important;
     }
@@ -161,9 +156,7 @@
   </footer>
 
   <!-- Modal para detalles de la región -->
-  <!-- El z-index de Tailwind 'z-50' asegura que esté por encima de casi todo. -->
   <div id="regionDetailModal" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-50 hidden">
-      <!-- El z-index del contenido es implícitamente mayor que el de su padre (el overlay) -->
       <div id="modalContent" class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col absolute transition-all duration-300 opacity-0 scale-95">
           <!-- Modal Header -->
           <div id="modalHeader" class="flex items-center justify-between p-5 border-b rounded-t cursor-move">
@@ -243,21 +236,16 @@ const archivoId = params.get('id');
 
 if (!archivoId) {
     alert('Falta el ID del archivo en la URL. ?id=...');
-    // Redirigir a una página de error o dashboard principal si es necesario
 }
 
 document.getElementById('archivoId').innerText = archivoId || '(ninguno)';
 
-/* SOLUCIÓN 3: Wrapper de Fetch para manejar la expiración del token */
-// Esta función envuelve todas las llamadas a la API.
-// Automáticamente añade el token de autenticación y, si recibe un error 401 (No autorizado),
-// limpia el almacenamiento local y redirige al usuario a la página de inicio de sesión.
 async function fetchWithAuth(url, options = {}) {
     const token = localStorage.getItem('token');
     
     if (!token) {
         alert('No se encontró un token de sesión. Serás redirigido al inicio.');
-        window.location.href = 'index.html'; // O la ruta a tu login
+        window.location.href = 'index.html';
         return Promise.reject(new Error('No hay token'));
     }
 
@@ -270,10 +258,9 @@ async function fetchWithAuth(url, options = {}) {
     const response = await fetch(url, { ...options, headers });
 
     if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('token'); // Limpiar el token expirado
+        localStorage.removeItem('token');
         alert('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
-        window.location.href = 'index.html'; // Redirigir a la página de login
-        // Devolvemos una promesa rechazada para detener cualquier procesamiento posterior
+        window.location.href = 'index.html';
         return Promise.reject(new Error('Token expirado o inválido.'));
     }
 
@@ -289,10 +276,15 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
 
 /* GLOBALES */
 let geojsonLayer = null;
-let metricsByName = new Map();
-let currentBreaks = [];
+let metricsByName = new Map(); // Contendrá los datos FILTRADOS actualmente
 let tipoUsoChart = null;
 let ingresoChart = null;
+
+// --- CORRECCIÓN 1: Nuevas variables globales para datos fijos ---
+// Almacenará los datos originales sin filtrar para CADA región.
+let originalMetricsByName = new Map();
+// Almacenará los rangos de color (breaks) calculados UNA SOLA VEZ con los datos originales.
+let fixedBreaks = [];
 
 /* FUNCIONES AUXILIARES */
 function normalizeName(s) {
@@ -362,19 +354,15 @@ function getColorForValue(v, breaks) {
 
 /* PROCESAMIENTO DE DATOS */
 function ingestMetrics(metricsArray) {
+    // Esta función ahora solo actualiza los datos filtrados (metricsByName)
     metricsByName.clear();
-    let metricValues = [];
     if (!Array.isArray(metricsArray)) return;
     for (const m of metricsArray) {
         const name = m.nameRegion;
         if (!name) continue;
         const n = normalizeName(name);
         metricsByName.set(n, m);
-        if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
-            metricValues.push(Number(m.indiceDesarrollo));
-        }
     }
-    return metricValues;
 }
 
 /* ESTILO Y EVENTOS DEL MAPA */
@@ -386,14 +374,24 @@ function getRegionNameFromFeature(feature) {
 function styleFeature(feature) {
     const deName = getRegionNameFromFeature(feature);
     const normalized = normalizeName(deName);
-    const metric = metricsByName.get(normalized);
-    const value = metric ? metric.indiceDesarrollo : null;
-    const fillColor = getColorForValue(value, currentBreaks);
+
+    // --- CORRECCIÓN 4: Usar los datos y rangos FIJOS para el estilo del mapa ---
+    // 1. Obtenemos la métrica ORIGINAL para saber su índice de desarrollo REAL.
+    const originalMetric = originalMetricsByName.get(normalized);
+    const value = originalMetric ? originalMetric.indiceDesarrollo : null;
+    
+    // 2. Usamos los rangos FIJOS (fixedBreaks) para determinar el color.
+    const fillColor = getColorForValue(value, fixedBreaks);
+
+    // 3. (Opcional pero recomendado) Verificamos si la región existe en los datos FILTRADOS.
+    // Si no existe, la mostramos más transparente para indicar que no cumple con el filtro.
+    const isFilteredOut = !metricsByName.has(normalized);
+
     return {
         weight: 1,
         color: '#FFFFFF',
         fillColor: fillColor,
-        fillOpacity: (value === null ? 0.4 : 0.9)
+        fillOpacity: isFilteredOut ? 0.25 : (value === null ? 0.4 : 0.9)
     };
 }
 
@@ -412,10 +410,12 @@ async function onFeatureClick(e) {
     const feature = e.target.feature;
     const deName = getRegionNameFromFeature(feature);
     const normalized = normalizeName(deName);
-    const metric = metricsByName.get(normalized);
+    
+    // Obtenemos la métrica filtrada actual. Si no existe, es que la región fue excluida por el filtro.
+    const currentFilteredMetric = metricsByName.get(normalized);
 
-    if (!metric) {
-        alert('No hay datos detallados para esta región con los filtros actuales.');
+    if (!currentFilteredMetric) {
+        alert('Esta región no cumple con los criterios de los filtros aplicados. No se pueden mostrar detalles.');
         return;
     }
     
@@ -423,15 +423,13 @@ async function onFeatureClick(e) {
 
     try {
         const q = buildFilterParams();
-        // USANDO fetchWithAuth en lugar de fetch
-        const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/regions/${metric.idRegion}${q}`);
+        const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/regions/${currentFilteredMetric.idRegion}${q}`);
         if (!res.ok) throw new Error(`Error ${res.status} obteniendo detalle.`);
         const detail = await res.json();
-        renderRegionDetail(feature, metric, detail);
+        // Pasamos el 'feature' (para el nombre), y el 'detail' (datos filtrados para el modal).
+        renderRegionDetail(feature, detail);
     } catch (err) {
         console.error("Error en onFeatureClick:", err);
-        // El wrapper fetchWithAuth ya maneja la redirección, así que solo ocultamos el modal
-        // si el error no fue por autenticación.
         if (err.message.indexOf('Token') === -1) {
             alert('Error al obtener detalle: ' + err.message);
             toggleModal(false);
@@ -441,8 +439,10 @@ async function onFeatureClick(e) {
 
 function onEachFeature(feature, layer) {
     const deName = getRegionNameFromFeature(feature);
-    const metric = metricsByName.get(normalizeName(deName));
-    const value = metric && metric.indiceDesarrollo !== undefined ? Number(metric.indiceDesarrollo).toFixed(3) : 'N/A';
+    // --- CORRECCIÓN 5: El tooltip debe mostrar siempre el índice ORIGINAL ---
+    const originalMetric = originalMetricsByName.get(normalizeName(deName));
+    const value = originalMetric && originalMetric.indiceDesarrollo !== undefined ? Number(originalMetric.indiceDesarrollo).toFixed(3) : 'N/A';
+    
     layer.bindTooltip(`${deName}<br>Índice: <strong>${value}</strong>`, { sticky: true });
     layer.on({ mouseover: highlightFeature, mouseout: resetHighlight, click: onFeatureClick });
 }
@@ -453,14 +453,10 @@ function onEachFeature(feature, layer) {
 function renderLegend(breaks) {
     const container = document.getElementById('legendItems');
     container.innerHTML = '';
-    let lastBreak = 0;
     
-    if (breaks.length > 0) {
-        const metricValues = Array.from(metricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null && !isNaN(v));
-        if (metricValues.length > 0) {
-           lastBreak = Math.min(...metricValues);
-        }
-    }
+    // Usamos los valores de las métricas originales para calcular el rango inicial
+    const metricValues = Array.from(originalMetricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null && !isNaN(v));
+    let lastBreak = metricValues.length > 0 ? Math.min(...metricValues) : 0;
 
     breaks.forEach((br, i) => {
         const label = `${Number(lastBreak).toFixed(2)} - ${Number(br).toFixed(2)}`;
@@ -477,13 +473,21 @@ function renderLegend(breaks) {
     });
 }
 
-function renderRegionDetail(feature, metric, detail) {
+function renderRegionDetail(feature, detail) {
     const name = getRegionNameFromFeature(feature);
-    const indice = detail.indiceDesarrollo !== undefined ? Number(detail.indiceDesarrollo) : null;
+    const normalizedName = normalizeName(name);
+
+    // --- CORRECCIÓN 6: El modal muestra el índice y categoría FIJOS, pero los datos de detalle (hogares, etc.) sí son los FILTRADOS.
+    const originalMetric = originalMetricsByName.get(normalizedName);
+    const originalIndice = originalMetric ? Number(originalMetric.indiceDesarrollo) : null;
     
     document.getElementById('modalRegionName').textContent = name;
-    document.getElementById('modalIndice').textContent = indice !== null ? indice.toFixed(3) : 'N/A';
-    document.getElementById('modalIndiceCategoria').textContent = indice !== null ? getCategoryForValue(indice, currentBreaks, CATEGORY_NAMES) : '';
+    
+    // Usamos los datos originales para el índice y la categoría
+    document.getElementById('modalIndice').textContent = originalIndice !== null ? originalIndice.toFixed(3) : 'N/A';
+    document.getElementById('modalIndiceCategoria').textContent = originalIndice !== null ? getCategoryForValue(originalIndice, fixedBreaks, CATEGORY_NAMES) : '';
+
+    // El resto de los datos vienen del objeto 'detail', que SÍ está filtrado, lo cual es correcto.
     document.getElementById('modalTotalHogares').textContent = detail.totalHogares || 'N/A';
     document.getElementById('modalAvgHabilidades').textContent = detail.avgHabilidadesDigitales !== undefined ? Number(detail.avgHabilidadesDigitales).toFixed(2) : 'N/A';
     document.getElementById('modalBarreraCosto').textContent = detail.pctBarreraCosto !== undefined ? `${(Number(detail.pctBarreraCosto) * 100).toFixed(1)}%` : 'N/A';
@@ -570,7 +574,6 @@ function dragElement(elmnt) {
     pos3 = e.clientX;
     pos4 = e.clientY;
     
-    // SOLUCIÓN 2.2: Añadimos la clase 'dragging' para que el movimiento sea fluido.
     elmnt.classList.add('dragging');
 
     document.onmouseup = closeDragElement;
@@ -585,8 +588,6 @@ function dragElement(elmnt) {
     pos3 = e.clientX;
     pos4 = e.clientY;
     
-    // MEJORA: Lógica de arrastre sin que se cierre accidentalmente.
-    // Calculamos la nueva posición y nos aseguramos de que no se salga de la pantalla.
     const newTop = Math.max(0, Math.min(window.innerHeight - elmnt.offsetHeight, elmnt.offsetTop - pos2));
     const newLeft = Math.max(0, Math.min(window.innerWidth - elmnt.offsetWidth, elmnt.offsetLeft - pos1));
 
@@ -595,7 +596,6 @@ function dragElement(elmnt) {
   }
 
   function closeDragElement() {
-    // SOLUCIÓN 2.3: Quitamos la clase 'dragging' para restaurar la animación.
     elmnt.classList.remove('dragging');
     document.onmouseup = null;
     document.onmousemove = null;
@@ -609,8 +609,6 @@ function toggleModal(show, title = '') {
         document.getElementById('modalRegionName').textContent = title;
         modalOverlay.classList.remove('hidden');
 
-        // Centrar el modal al mostrarlo, antes de hacerlo visible
-        // Esto evita saltos visuales.
         modalContent.style.left = `calc(50% - ${modalContent.offsetWidth / 2}px)`;
         modalContent.style.top = `calc(50% - ${modalContent.offsetHeight / 2}px)`;
 
@@ -626,8 +624,43 @@ function toggleModal(show, title = '') {
     }
 }
 
+// --- CORRECCIÓN 2: Nueva función para cargar los datos base UNA SOLA VEZ ---
+async function initializeDashboardData() {
+    try {
+        // 1. Hacemos una llamada a la API SIN filtros para obtener los datos originales.
+        const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map`);
+        if (!res.ok) throw new Error(`Error al pedir métricas originales: ${res.status}`);
+        const originalMetrics = await res.json();
+        
+        const originalMetricValues = [];
+        if (Array.isArray(originalMetrics)) {
+            for (const m of originalMetrics) {
+                const name = m.nameRegion;
+                if (!name) continue;
+                // 2. Guardamos estos datos originales en nuestra variable global.
+                originalMetricsByName.set(normalizeName(name), m);
+                if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
+                    originalMetricValues.push(Number(m.indiceDesarrollo));
+                }
+            }
+        }
+        
+        // 3. Calculamos los rangos de color (breaks) con estos datos originales y los guardamos.
+        fixedBreaks = computeQuantileBreaks(originalMetricValues, BUCKETS);
+        
+        // 4. Renderizamos la leyenda, que ahora será fija.
+        renderLegend(fixedBreaks);
+        
+    } catch (err) {
+        console.error("Error inicializando datos del dashboard:", err);
+        if (err.message.indexOf('Token') === -1) {
+            alert('Error crítico al cargar datos base: ' + err.message);
+        }
+    }
+}
 
-/* FUNCIÓN PRINCIPAL DE CARGA */
+
+/* FUNCIÓN PRINCIPAL DE CARGA (Ahora se enfoca en aplicar filtros y redibujar) */
 async function loadAndRenderMap() {
     const loadingOverlay = document.createElement('div');
     loadingOverlay.innerHTML = `<div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-30"><div class="text-center"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div><p class="mt-4 text-gray-600 font-semibold">Cargando datos del mapa...</p></div></div>`;
@@ -635,21 +668,21 @@ async function loadAndRenderMap() {
 
     try {
         const q = buildFilterParams();
-        // USANDO fetchWithAuth
+        // Sigue pidiendo los datos con filtros, pero ahora solo los usará para los detalles del modal
         const resM = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map${q}`);
         if (!resM.ok) throw new Error(`Error al pedir métricas: ${resM.status}`);
         const metrics = await resM.json();
-        const metricValues = ingestMetrics(metrics);
+        // Actualiza `metricsByName` con los datos filtrados.
+        ingestMetrics(metrics);
         
-        currentBreaks = computeQuantileBreaks(metricValues, BUCKETS);
-        renderLegend(currentBreaks);
+        // --- CORRECCIÓN: Ya no calcula breaks ni renderiza la leyenda aquí ---
 
-        // USANDO fetchWithAuth
         const resG = await fetchWithAuth(GEOJSON_URL);
         if (!resG.ok) throw new Error(`GeoJSON no encontrado: ${resG.status}`);
         const geojson = await resG.json();
 
         if (geojsonLayer) map.removeLayer(geojsonLayer);
+        // La función `styleFeature` ahora usará los datos fijos para colorear
         geojsonLayer = L.geoJson(geojson, { style: styleFeature, onEachFeature }).addTo(map);
         if (geojsonLayer.getBounds().isValid()) {
              map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
@@ -679,21 +712,23 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
 /* CARGA INICIAL */
 (async function init() {
     try {
-        // USANDO fetchWithAuth
         const r = await fetchWithAuth(`${API_BASE}/api/auth/me`);
         if (r.ok) {
             const u = await r.json();
             if (u && u.email) document.getElementById('userEmail').innerText = u.email;
         }
     } catch(e) { 
-      // El error de token ya es manejado por el wrapper,
-      // así que solo mostramos errores de red, etc.
       if (e.message.indexOf('Token') === -1) {
         console.error("No se pudo obtener el email del usuario", e); 
       }
     }
     
-    loadAndRenderMap();
+    // --- CORRECCIÓN 3: Flujo de carga inicial modificado ---
+    // 1. Primero, cargamos y procesamos los datos base que no cambiarán.
+    await initializeDashboardData();
+    // 2. Luego, llamamos a loadAndRenderMap para que dibuje el mapa por primera vez (sin filtros).
+    await loadAndRenderMap();
+    
     dragElement(document.getElementById("modalContent"));
 })();
 
