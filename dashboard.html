@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale-1.0">
   <title>Dashboard — Brecha Digital en Colombia</title>
 
   <!-- Tailwind CSS -->
@@ -169,7 +169,7 @@
           <div class="p-6 space-y-6 overflow-y-auto">
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
                   <div class="bg-gray-50 p-4 rounded-lg">
-                      <div class="text-sm text-gray-600">Índice de Desarrollo</div>
+                      <div class="text-sm text-gray-600">Índice de Desarrollo Digital del Departamento</div>
                       <div id="modalIndice" class="text-3xl font-bold text-indigo-600"></div>
                       <div id="modalIndiceCategoria" class="text-sm font-semibold text-gray-700"></div>
                   </div>
@@ -178,7 +178,7 @@
                       <div id="modalTotalHogares" class="text-3xl font-bold text-indigo-600"></div>
                   </div>
                   <div class="bg-gray-50 p-4 rounded-lg">
-                      <div class="text-sm text-gray-600">Promedio Habilidades</div>
+                      <div class="text-sm text-gray-600">Promedio Habilidades Digitales</div>
                       <div id="modalAvgHabilidades" class="text-3xl font-bold text-indigo-600"></div>
                   </div>
               </div>
@@ -218,6 +218,11 @@
       </div>
   </div>
 
+  <!-- MEJORA 2.1: Contenedor para las notificaciones Toast -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-[100] w-full max-w-xs space-y-3">
+      <!-- Los Toasts se añadirán aquí dinámicamente -->
+  </div>
+
 
   <!-- Leaflet + Chart.js -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -235,7 +240,8 @@ const params = new URLSearchParams(window.location.search);
 const archivoId = params.get('id');
 
 if (!archivoId) {
-    alert('Falta el ID del archivo en la URL. ?id=...');
+    // MEJORA 2.2: Reemplazo de alert por toast
+    showToast('Falta el ID del archivo en la URL.', 'error');
 }
 
 document.getElementById('archivoId').innerText = archivoId || '(ninguno)';
@@ -244,8 +250,8 @@ async function fetchWithAuth(url, options = {}) {
     const token = localStorage.getItem('token');
     
     if (!token) {
-        alert('No se encontró un token de sesión. Serás redirigido al inicio.');
-        window.location.href = 'index.html';
+        showToast('No se encontró un token. Redirigiendo...', 'error');
+        setTimeout(() => window.location.href = 'index.html', 2000);
         return Promise.reject(new Error('No hay token'));
     }
 
@@ -259,8 +265,8 @@ async function fetchWithAuth(url, options = {}) {
 
     if (response.status === 401 || response.status === 403) {
         localStorage.removeItem('token');
-        alert('Tu sesión ha expirado. Por favor, inicia sesión de nuevo.');
-        window.location.href = 'index.html';
+        showToast('Tu sesión ha expirado. Redirigiendo...', 'warning');
+        setTimeout(() => window.location.href = 'index.html', 2000);
         return Promise.reject(new Error('Token expirado o inválido.'));
     }
 
@@ -276,17 +282,57 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
 
 /* GLOBALES */
 let geojsonLayer = null;
-let metricsByName = new Map(); // Contendrá los datos FILTRADOS actualmente
+let metricsByName = new Map();
 let tipoUsoChart = null;
 let ingresoChart = null;
-
-// --- CORRECCIÓN 1: Nuevas variables globales para datos fijos ---
-// Almacenará los datos originales sin filtrar para CADA región.
 let originalMetricsByName = new Map();
-// Almacenará los rangos de color (breaks) calculados UNA SOLA VEZ con los datos originales.
 let fixedBreaks = [];
 
 /* FUNCIONES AUXILIARES */
+
+// MEJORA 2.3: Función para mostrar notificaciones Toast
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const icons = {
+        info: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`,
+        warning: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`,
+        error: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`
+    };
+    const colors = {
+        info: 'bg-blue-500',
+        warning: 'bg-yellow-500',
+        error: 'bg-red-600'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `flex items-center w-full max-w-xs p-4 space-x-3 text-white ${colors[type]} rounded-lg shadow-lg transform translate-x-full opacity-0 transition-all duration-300 ease-in-out`;
+    
+    toast.innerHTML = `
+        <div class="flex-shrink-0">${icons[type]}</div>
+        <div class="flex-1 text-sm font-medium">${message}</div>
+        <button type="button" class="p-1.5 -m-1.5 ml-2 rounded-md hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.remove('translate-x-full', 'opacity-0');
+    }, 50);
+
+    const removeToast = () => {
+        toast.classList.add('opacity-0', 'translate-x-full');
+        setTimeout(() => toast.remove(), 300);
+    };
+
+    toast.querySelector('button').addEventListener('click', removeToast);
+    setTimeout(removeToast, 5000);
+}
+
+
 function normalizeName(s) {
     if (s == null) return null;
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -354,7 +400,6 @@ function getColorForValue(v, breaks) {
 
 /* PROCESAMIENTO DE DATOS */
 function ingestMetrics(metricsArray) {
-    // Esta función ahora solo actualiza los datos filtrados (metricsByName)
     metricsByName.clear();
     if (!Array.isArray(metricsArray)) return;
     for (const m of metricsArray) {
@@ -374,24 +419,29 @@ function getRegionNameFromFeature(feature) {
 function styleFeature(feature) {
     const deName = getRegionNameFromFeature(feature);
     const normalized = normalizeName(deName);
+    const isFilteredOut = !metricsByName.has(normalized);
 
-    // --- CORRECCIÓN 4: Usar los datos y rangos FIJOS para el estilo del mapa ---
-    // 1. Obtenemos la métrica ORIGINAL para saber su índice de desarrollo REAL.
+    // MEJORA 1: Lógica de visualización para regiones filtradas
+    // Si la región no cumple el filtro, se pinta de un gris neutro.
+    if (isFilteredOut) {
+        return {
+            weight: 1,
+            color: '#FFFFFF',
+            fillColor: '#E5E7EB', // Gris neutro (Tailwind gray-200)
+            fillOpacity: 0.5
+        };
+    }
+
+    // Si la región SÍ cumple el filtro, se usa la lógica original.
     const originalMetric = originalMetricsByName.get(normalized);
     const value = originalMetric ? originalMetric.indiceDesarrollo : null;
-    
-    // 2. Usamos los rangos FIJOS (fixedBreaks) para determinar el color.
     const fillColor = getColorForValue(value, fixedBreaks);
-
-    // 3. (Opcional pero recomendado) Verificamos si la región existe en los datos FILTRADOS.
-    // Si no existe, la mostramos más transparente para indicar que no cumple con el filtro.
-    const isFilteredOut = !metricsByName.has(normalized);
 
     return {
         weight: 1,
         color: '#FFFFFF',
         fillColor: fillColor,
-        fillOpacity: isFilteredOut ? 0.25 : (value === null ? 0.4 : 0.9)
+        fillOpacity: (value === null ? 0.4 : 0.9)
     };
 }
 
@@ -411,11 +461,10 @@ async function onFeatureClick(e) {
     const deName = getRegionNameFromFeature(feature);
     const normalized = normalizeName(deName);
     
-    // Obtenemos la métrica filtrada actual. Si no existe, es que la región fue excluida por el filtro.
     const currentFilteredMetric = metricsByName.get(normalized);
 
     if (!currentFilteredMetric) {
-        alert('Esta región no cumple con los criterios de los filtros aplicados. No se pueden mostrar detalles.');
+        showToast('Esta región no cumple con los filtros aplicados.', 'info');
         return;
     }
     
@@ -426,12 +475,11 @@ async function onFeatureClick(e) {
         const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/regions/${currentFilteredMetric.idRegion}${q}`);
         if (!res.ok) throw new Error(`Error ${res.status} obteniendo detalle.`);
         const detail = await res.json();
-        // Pasamos el 'feature' (para el nombre), y el 'detail' (datos filtrados para el modal).
         renderRegionDetail(feature, detail);
     } catch (err) {
         console.error("Error en onFeatureClick:", err);
         if (err.message.indexOf('Token') === -1) {
-            alert('Error al obtener detalle: ' + err.message);
+            showToast('Error al obtener detalle: ' + err.message, 'error');
             toggleModal(false);
         }
     }
@@ -439,7 +487,6 @@ async function onFeatureClick(e) {
 
 function onEachFeature(feature, layer) {
     const deName = getRegionNameFromFeature(feature);
-    // --- CORRECCIÓN 5: El tooltip debe mostrar siempre el índice ORIGINAL ---
     const originalMetric = originalMetricsByName.get(normalizeName(deName));
     const value = originalMetric && originalMetric.indiceDesarrollo !== undefined ? Number(originalMetric.indiceDesarrollo).toFixed(3) : 'N/A';
     
@@ -449,12 +496,10 @@ function onEachFeature(feature, layer) {
 
 
 /* RENDERIZADO DE COMPONENTES UI */
-
 function renderLegend(breaks) {
     const container = document.getElementById('legendItems');
     container.innerHTML = '';
     
-    // Usamos los valores de las métricas originales para calcular el rango inicial
     const metricValues = Array.from(originalMetricsByName.values()).map(m => m.indiceDesarrollo).filter(v => v !== null && !isNaN(v));
     let lastBreak = metricValues.length > 0 ? Math.min(...metricValues) : 0;
 
@@ -477,17 +522,13 @@ function renderRegionDetail(feature, detail) {
     const name = getRegionNameFromFeature(feature);
     const normalizedName = normalizeName(name);
 
-    // --- CORRECCIÓN 6: El modal muestra el índice y categoría FIJOS, pero los datos de detalle (hogares, etc.) sí son los FILTRADOS.
     const originalMetric = originalMetricsByName.get(normalizedName);
     const originalIndice = originalMetric ? Number(originalMetric.indiceDesarrollo) : null;
     
     document.getElementById('modalRegionName').textContent = name;
-    
-    // Usamos los datos originales para el índice y la categoría
     document.getElementById('modalIndice').textContent = originalIndice !== null ? originalIndice.toFixed(3) : 'N/A';
     document.getElementById('modalIndiceCategoria').textContent = originalIndice !== null ? getCategoryForValue(originalIndice, fixedBreaks, CATEGORY_NAMES) : '';
 
-    // El resto de los datos vienen del objeto 'detail', que SÍ está filtrado, lo cual es correcto.
     document.getElementById('modalTotalHogares').textContent = detail.totalHogares || 'N/A';
     document.getElementById('modalAvgHabilidades').textContent = detail.avgHabilidadesDigitales !== undefined ? Number(detail.avgHabilidadesDigitales).toFixed(2) : 'N/A';
     document.getElementById('modalBarreraCosto').textContent = detail.pctBarreraCosto !== undefined ? `${(Number(detail.pctBarreraCosto) * 100).toFixed(1)}%` : 'N/A';
@@ -624,10 +665,8 @@ function toggleModal(show, title = '') {
     }
 }
 
-// --- CORRECCIÓN 2: Nueva función para cargar los datos base UNA SOLA VEZ ---
 async function initializeDashboardData() {
     try {
-        // 1. Hacemos una llamada a la API SIN filtros para obtener los datos originales.
         const res = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map`);
         if (!res.ok) throw new Error(`Error al pedir métricas originales: ${res.status}`);
         const originalMetrics = await res.json();
@@ -637,7 +676,6 @@ async function initializeDashboardData() {
             for (const m of originalMetrics) {
                 const name = m.nameRegion;
                 if (!name) continue;
-                // 2. Guardamos estos datos originales en nuestra variable global.
                 originalMetricsByName.set(normalizeName(name), m);
                 if (m.indiceDesarrollo !== undefined && m.indiceDesarrollo !== null) {
                     originalMetricValues.push(Number(m.indiceDesarrollo));
@@ -645,22 +683,18 @@ async function initializeDashboardData() {
             }
         }
         
-        // 3. Calculamos los rangos de color (breaks) con estos datos originales y los guardamos.
         fixedBreaks = computeQuantileBreaks(originalMetricValues, BUCKETS);
-        
-        // 4. Renderizamos la leyenda, que ahora será fija.
         renderLegend(fixedBreaks);
         
     } catch (err) {
         console.error("Error inicializando datos del dashboard:", err);
         if (err.message.indexOf('Token') === -1) {
-            alert('Error crítico al cargar datos base: ' + err.message);
+            showToast('Error crítico al cargar datos base: ' + err.message, 'error');
         }
     }
 }
 
 
-/* FUNCIÓN PRINCIPAL DE CARGA (Ahora se enfoca en aplicar filtros y redibujar) */
 async function loadAndRenderMap() {
     const loadingOverlay = document.createElement('div');
     loadingOverlay.innerHTML = `<div class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-30"><div class="text-center"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div><p class="mt-4 text-gray-600 font-semibold">Cargando datos del mapa...</p></div></div>`;
@@ -668,21 +702,16 @@ async function loadAndRenderMap() {
 
     try {
         const q = buildFilterParams();
-        // Sigue pidiendo los datos con filtros, pero ahora solo los usará para los detalles del modal
         const resM = await fetchWithAuth(`${API_BASE}/api/archivos2/${archivoId}/map${q}`);
         if (!resM.ok) throw new Error(`Error al pedir métricas: ${resM.status}`);
         const metrics = await resM.json();
-        // Actualiza `metricsByName` con los datos filtrados.
         ingestMetrics(metrics);
         
-        // --- CORRECCIÓN: Ya no calcula breaks ni renderiza la leyenda aquí ---
-
         const resG = await fetchWithAuth(GEOJSON_URL);
         if (!resG.ok) throw new Error(`GeoJSON no encontrado: ${resG.status}`);
         const geojson = await resG.json();
 
         if (geojsonLayer) map.removeLayer(geojsonLayer);
-        // La función `styleFeature` ahora usará los datos fijos para colorear
         geojsonLayer = L.geoJson(geojson, { style: styleFeature, onEachFeature }).addTo(map);
         if (geojsonLayer.getBounds().isValid()) {
              map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
@@ -690,7 +719,7 @@ async function loadAndRenderMap() {
     } catch (err) {
         console.error("Error en loadAndRenderMap:", err);
         if (err.message.indexOf('Token') === -1) {
-          alert('Error cargando mapa: ' + err.message);
+          showToast('Error cargando mapa: ' + err.message, 'error');
         }
     } finally {
         if(document.body.contains(loadingOverlay)) {
@@ -723,10 +752,7 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
       }
     }
     
-    // --- CORRECCIÓN 3: Flujo de carga inicial modificado ---
-    // 1. Primero, cargamos y procesamos los datos base que no cambiarán.
     await initializeDashboardData();
-    // 2. Luego, llamamos a loadAndRenderMap para que dibuje el mapa por primera vez (sin filtros).
     await loadAndRenderMap();
     
     dragElement(document.getElementById("modalContent"));
@@ -735,3 +761,4 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
 </script>
 </body>
 </html>
+
