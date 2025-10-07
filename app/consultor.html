@@ -7,12 +7,27 @@
   <link rel="stylesheet" href="../consultor/consultor_styles.css"/>
 </head>
 <body>
-  <div class="card">
-    <div class="brand">
-      <img src="../src/logo1.png" alt="Logo Connective+" class="logo"/>
-      <h1 class="brand-name">Connective+</h1>
+
+  <!-- Barra superior -->
+  <header class="top-bar" role="banner">
+    <div class="top-left">
+      <img src="../src/logo1.png" alt="Connective+ logo" class="top-logo">
+      <span class="top-title">Connective+</span>
     </div>
 
+    <div class="top-right" role="region" aria-label="Perfil y sesión">
+      <div class="profile">
+        <div class="profile-info">
+          <div id="userEmail" class="profile-email">—</div>
+          <div id="userRole" class="profile-role">—</div>
+        </div>
+        <button id="logoutBtn" class="logout-btn" title="Cerrar sesión">Cerrar sesión</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenido principal -->
+  <div class="card">
     <h2>Panel del Consultor</h2>
     <p>
       Este panel forma parte del sistema de apoyo a la decisión (DSS) para el 
@@ -43,10 +58,6 @@
       </thead>
       <tbody></tbody>
     </table>
-
-    <div class="logout">
-      <button onclick="logout()">Cerrar sesión</button>
-    </div>
   </div>
 
   <!-- Panel de accesibilidad -->

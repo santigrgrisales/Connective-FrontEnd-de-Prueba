@@ -7,6 +7,16 @@ const nombreArchivo = document.getElementById("nombreArchivo");
 const descripcion = document.getElementById("descripcion");
 const statusEl = document.getElementById("status");
 
+
+// ------------------ UTIL: logout btn hookup ------------------
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', () => {
+    logout();
+  });
+}
+
+// === SUBIR ARCHIVO ===
 uploadBtn.addEventListener("click", async () => {
   if (fileInput.files.length === 0) {
     statusEl.innerText = "Por favor selecciona un archivo CSV";
@@ -39,15 +49,18 @@ uploadBtn.addEventListener("click", async () => {
   }
 });
 
+// === CARGAR ARCHIVOS ===
 async function cargarArchivos() {
   try {
     const res = await fetch(`${API_BASE}/api/archivos/list`, {
       headers: { "Authorization": "Bearer " + token }
     });
     if (!res.ok) return;
+
     const archivos = await res.json();
     const tbody = document.querySelector("#archivosTable tbody");
     tbody.innerHTML = "";
+
     archivos.forEach(a => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -55,7 +68,10 @@ async function cargarArchivos() {
         <td>${a.nombre_archivo || "-"}</td>
         <td>${a.description || "-"}</td>
         <td>${a.created_at || "-"}</td>
-        <td><span class="btn-link" onclick="verDashboard(${a.id_archivo})">Ver Dashboard</span></td>
+        <td class="acciones">
+          <button class="btn-action" onclick="verDashboard(${a.id_archivo})">ver </button>
+          <button class="btn-delete" onclick="eliminarArchivo(${a.id_archivo})">borrar</button>
+        </td>
       `;
       tbody.appendChild(tr);
     });
@@ -64,16 +80,58 @@ async function cargarArchivos() {
   }
 }
 
+// === ELIMINAR ARCHIVO ===
+let idArchivoEliminar = null;
+
+function eliminarArchivo(id) {
+  idArchivoEliminar = id;
+  document.getElementById("modal-confirm").classList.remove("hidden");
+}
+
+document.getElementById("btn-cancelar").addEventListener("click", () => {
+  document.getElementById("modal-confirm").classList.add("hidden");
+  idArchivoEliminar = null;
+});
+
+document.getElementById("btn-confirmar").addEventListener("click", async () => {
+  if (!idArchivoEliminar) return;
+  const id = idArchivoEliminar;
+  idArchivoEliminar = null;
+  document.getElementById("modal-confirm").classList.add("hidden");
+
+  try {
+    const res = await fetch(`${API_BASE}/api/archivos/${id}`, {
+      method: "DELETE",
+      headers: { "Authorization": "Bearer " + token }
+    });
+
+    if (res.ok) {
+      alert("Archivo eliminado correctamente.");
+      cargarArchivos();
+    } else {
+      const error = await res.text();
+      alert("Error al eliminar: " + error);
+    }
+  } catch (e) {
+    console.error("Error eliminando archivo:", e);
+    alert("Error de conexión con el servidor.");
+  }
+});
+
+// === ACCIONES GENERALES ===
 function logout() {
   localStorage.removeItem('token');
-  window.location.href = '/';
+  // opcional: quitar userEmail/userRole guardados
+  localStorage.removeItem('userEmail');
+  localStorage.removeItem('userRole');
+  window.location.href = '../index.html';
 }
 
 function verDashboard(id) {
   window.location.href = `../app/dashboard.html?id=${id}`;
 }
 
-// Validar sesión al cargar
+// ------------------ VALIDAR SESIÓN Y OBTENER USUARIO (real desde /api/auth/me) ------------------
 (async function check() {
   if (!token) { window.location.href = '/'; return; }
   try {
@@ -85,15 +143,30 @@ function verDashboard(id) {
       return;
     }
     const user = await res.json();
-    const roles = (user.roles || []).map(r => r.toUpperCase());
-    if (!roles.some(r => r.includes('ADMIN'))) logout();
-    else cargarArchivos();
-  } catch {
+
+    // Mostrar email y rol en la top-bar
+    const emailEl = document.getElementById('userEmail');
+    const roleEl = document.getElementById('userRole');
+    if (emailEl) emailEl.textContent = user.email || '';
+    // determinar rol amigable
+    const roles = (user.roles || []).map(r => (''+r).toUpperCase());
+    let friendly = roles.some(r => r.includes('ADMIN')) ? 'Administrador'
+                 : roles.some(r => r.includes('CONSULTOR') || r.includes('CONSULTANT')) ? 'Consultor'
+                 : (roles.length ? roles.join(', ') : 'Usuario');
+    if (roleEl) roleEl.textContent = friendly;
+ // almacenar para otras páginas (opcional)
+    localStorage.setItem('userEmail', user.email || '');
+    localStorage.setItem('userRole', friendly);
+
+    // cargar tabla
+    cargarArchivos();
+  } catch (e) {
+    console.error('Error validando sesión:', e);
     logout();
   }
 })();
 
-/* 🎛️ Panel de accesibilidad */
+/* === PANEL DE ACCESIBILIDAD === */
 const accToggle = document.getElementById('accessibilityToggle');
 const accOptions = document.getElementById('accessibilityOptions');
 const darkToggle = document.getElementById('darkToggle');
@@ -106,7 +179,6 @@ accToggle.addEventListener('click', () => {
   accOptions.classList.toggle('hidden');
 });
 
-// Dark mode persistente
 if (localStorage.getItem('theme') === 'dark') {
   body.classList.add('dark');
   darkToggle.textContent = '☀️ Modo claro';
@@ -119,7 +191,6 @@ darkToggle.addEventListener('click', () => {
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
 });
 
-// Control de tamaño de fuente
 let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
 body.style.fontSize = fontSize + 'em';
 
@@ -138,3 +209,4 @@ resetText.addEventListener('click', () => {
   body.style.fontSize = '1em';
   localStorage.setItem('fontSize', 1);
 });
+

@@ -144,3 +144,306 @@ body.dark {
 body.dark button {
   color: #fff;
 }
+
+/* === MODAL DE CONFIRMACIÓN === */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: opacity 0.3s;
+}
+
+.modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.modal-content {
+  background: var(--modal-bg, #fff);
+  color: var(--modal-text, #222);
+  padding: 20px 30px;
+  border-radius: 12px;
+  width: 320px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  transition: background 0.3s, color 0.3s;
+}
+
+.modal-content h3 {
+  margin-top: 0;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 20px;
+}
+
+.modal-buttons button {
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+#btn-cancelar {
+  background: #ccc;
+  color: #222;
+}
+
+#btn-confirmar {
+  background: #e74c3c;
+  color: #fff;
+}
+
+#btn-cancelar:hover {
+  background: #bbb;
+}
+
+#btn-confirmar:hover {
+  background: #c0392b;
+}
+
+/* Colores para modo oscuro */
+body.dark-mode .modal-content {
+  --modal-bg: #2c2c2c;
+  --modal-text: #f0f0f0;
+}
+
+/* Acciones combinadas en una sola columna */
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-link {
+  color: var(--primary, #005fa3);
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  font-size: 0.95rem;
+  padding: 4px 6px;
+}
+
+.btn-link:hover {
+  color: var(--primary-hover, #004c82);
+}
+
+/* Ajuste visual del botón eliminar junto al de ver */
+.btn-delete-inline {
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 0.85rem;
+}
+
+.btn-delete-inline:hover {
+  background: #c0392b;
+}
+
+body.dark .btn-delete-inline {
+  background: #d9534f;
+}
+
+body.dark .btn-delete-inline:hover {
+  background: #b52b27;
+}
+
+.acciones {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.btn-action {
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-action:hover {
+  background: #0056b3;
+}
+
+/* ------------------ Base (ya lo tenías; aquí mantenemos coherencia) ------------------ */
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: var(--bg, #f7f8fa);
+  color: var(--text, #222);
+  margin: 0;
+  padding: 0;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.card {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 22px 26px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  border-radius: 12px;
+}
+
+/* ------------------ Top bar (nuevo) ------------------ */
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  gap: 16px;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+/* left side small branding */
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.top-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.top-title {
+  font-weight: 600;
+  color: var(--text, #222);
+  font-size: 1rem;
+}
+
+/* right: profile + logout aligned right */
+.top-right {
+  margin-left: auto; /* empuja a la derecha */
+  display: flex;
+  align-items: center;
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* perfil visual */
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* alinear texto a la derecha */
+  line-height: 1;
+}
+.profile-email {
+  font-weight: 600;
+  color: var(--text, #222);
+  font-size: 0.95rem;
+}
+.profile-role {
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+/* boton cerrar sesión en la barra */
+.logout-btn {
+  background: var(--primary, #005fa3);
+  color: #fff;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-left: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.logout-btn:hover {
+  background: var(--primary-hover, #004c82);
+}
+
+/* ocultar marca redundante dentro de .card (la dejé como visually-hidden) */
+.visually-hidden { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+
+/* ------------------ Tabla / acciones ------------------ */
+table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 0.95rem; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background: var(--table-header, #f2f2f2); }
+
+.acciones {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-action {
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.btn-action:hover { background: #0056b3; }
+
+.btn-delete {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.btn-delete:hover { background: #c0392b; }
+
+/* ------------------ Panel accesibilidad (dejado igual, z-index por encima de top-bar) ------------------ */
+.accessibility-panel { position: fixed; bottom: 25px; right: 25px; z-index: 1200; }
+.accessibility-btn { background: var(--primary, #005fa3); color: white; border: none; border-radius: 50%; width: 50px; height: 50px; font-size: 22px; cursor: pointer; }
+.accessibility-options { margin-top: 10px; background: var(--card-bg, #fff); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
+.accessibility-options button { background: var(--primary, #005fa3); color: #fff; border: none; border-radius: 8px; padding: 8px; cursor: pointer; }
+.hidden { display: none; }
+
+/* ------------------ Modal (ajustado para usar body.dark) ------------------ */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1300; }
+.modal.hidden { opacity: 0; pointer-events: none; }
+.modal-content { background: var(--modal-bg, #fff); color: var(--modal-text, #222); padding: 20px 26px; border-radius: 10px; width: 360px; text-align: center; box-shadow: 0 8px 26px rgba(0,0,0,0.18); }
+.modal-buttons { display:flex; gap:12px; justify-content:center; margin-top:18px; }
+#btn-cancelar { background:#ccc; color:#222; border:none; padding:8px 14px; border-radius:8px; cursor:pointer; }
+#btn-confirmar { background:#e74c3c; color:#fff; border:none; padding:8px 14px; border-radius:8px; cursor:pointer; }
+
+/* ------------------ Modo oscuro (usa body.dark) ------------------ */
+body.dark {
+  --bg: #121212;
+  --text: #e6eef9;
+  --card-bg: #16171a;
+  --primary: #4fc3f7;
+  --primary-hover: #29b6f6;
+  --table-header: #222;
+  --modal-bg: #1f1f1f;
+  --modal-text: #e6eef9;
+}
+
+body.dark .top-bar {
+  background: var(--card-bg);
+  border-bottom-color: rgba(255,255,255,0.04);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+body.dark .top-title, body.dark .profile-email { color: var(--text); }
+body.dark .profile-role { color: #cbd5e1; }
+body.dark .logout-btn { background: var(--primary); color: #121212; }
+body.dark .btn-action { background: var(--primary); color: #111; }
+body.dark .btn-delete { background: #d9534f; color: white; }
+body.dark .accessibility-options { background: var(--card-bg); }
