@@ -1,12 +1,80 @@
+/* ====== General ====== */
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: var(--bg, #f7f8fa);
   color: var(--text, #222);
   margin: 0;
-  padding: 0;
   transition: background 0.3s, color 0.3s;
 }
 
+/* ====== Barra superior ====== */
+.top-bar {
+  background: var(--card-bg, #fff);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 25px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-logo {
+  width: 38px;
+  height: 38px;
+}
+
+.top-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.top-right {
+  display: flex;
+  align-items: center;
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.profile-info {
+  text-align: right;
+}
+
+.profile-email {
+  font-weight: 500;
+}
+
+.profile-role {
+  font-size: 0.85rem;
+  color: gray;
+}
+
+.logout-btn {
+  background: var(--primary, #005fa3);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.logout-btn:hover {
+  background: var(--primary-hover, #004c82);
+}
+
+/* ====== Tarjeta principal ====== */
 .card {
   max-width: 900px;
   margin: 40px auto;
@@ -16,32 +84,8 @@ body {
   border-radius: 12px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 10px;
-  margin-bottom: 20px;
-}
-
-.logo {
-  width: 40px;
-  height: 40px;
-}
-
-.brand-name {
-  font-size: 1.4rem;
-  color: var(--text, #222);
-}
-
 h2, h3 {
   color: var(--text, #222);
-}
-
-p {
-  line-height: 1.6;
-  color: var(--text, #333);
 }
 
 .context-box {
@@ -50,15 +94,6 @@ p {
   padding: 15px 20px;
   border-radius: 8px;
   margin-top: 20px;
-}
-
-ul {
-  margin-top: 10px;
-  padding-left: 20px;
-}
-
-ul li {
-  margin-bottom: 6px;
 }
 
 table {
@@ -71,32 +106,27 @@ table {
 th, td {
   border: 1px solid #ccc;
   padding: 8px;
-  text-align: left;
 }
 
 th {
   background: var(--table-header, #f2f2f2);
 }
 
-/* Logout */
-.logout {
-  text-align: center;
-  margin-top: 20px;
-}
-.logout button {
+.btn-ver {
   background: var(--primary, #005fa3);
   color: #fff;
   border: none;
-  padding: 10px 16px;
-  border-radius: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.3s;
 }
-.logout button:hover {
+
+.btn-ver:hover {
   background: var(--primary-hover, #004c82);
 }
 
-/* Panel de accesibilidad */
+/* ====== Accesibilidad ====== */
 .accessibility-panel {
   position: fixed;
   bottom: 25px;
@@ -133,14 +163,11 @@ th {
   border-radius: 8px;
   padding: 8px;
   cursor: pointer;
-  font-size: 0.9rem;
 }
 
-.hidden {
-  display: none;
-}
+.hidden { display: none; }
 
-/* 🌙 Modo oscuro */
+/* ====== 🌙 Modo oscuro ====== */
 body.dark {
   --bg: #121212;
   --text: #e0e0e0;

@@ -6,51 +6,80 @@
   <title>Connective+ — Panel de Administración</title>
   <link rel="stylesheet" href="../admin/admin._styles.css"/>
 </head>
+
+ 
 <body>
-  <div class="card">
-    <div class="brand">
-      <img src="../src/logo1.png" alt="Logo Connective+" class="logo"/>
-      <h1 class="brand-name">Connective+</h1>
+  <!-- Barra superior: logo (izq) + perfil (der) -->
+  <header class="top-bar" role="banner">
+    <div class="top-left">
+      <img src="../src/logo1.png" alt="Connective+ logo" class="top-logo">
+      <span class="top-title">Connective+</span>
     </div>
 
-    <h2>Panel de Administración</h2>
-    <p>Bienvenido, esta es la vista de administrador. Aquí puedes importar CSV y ver archivos.</p>
-
-    <div class="form-section">
-      <input type="file" id="fileInput" accept=".csv"><br>
-      <input type="text" id="nombreArchivo" placeholder="Nombre archivo (opcional)"><br>
-      <input type="text" id="descripcion" placeholder="Descripción (opcional)"><br>
-      <button id="uploadBtn">Subir CSV</button>
-      <p id="status"></p>
+    <div class="top-right" role="region" aria-label="Perfil y sesión">
+      <div class="profile">
+        <div class="profile-info">
+          <div id="userEmail" class="profile-email">—</div>
+          <div id="userRole" class="profile-role">—</div>
+        </div>
+        <button id="logoutBtn" class="logout-btn" title="Cerrar sesión">Cerrar sesión</button>
+      </div>
     </div>
+  </header>
 
-    <h3>Archivos Cargados</h3>
-    <table id="archivosTable">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Nombre</th>
-          <th>Descripción</th>
-          <th>Fecha Cargada</th>
-          <th>Acción</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <main>
+    <div class="card">
+      <div class="brand" aria-hidden="true">
+        <h1 class="brand-name visually-hidden">Connective+</h1>
+      </div>
 
-    <div class="logout">
-      <button onclick="logout()">Cerrar sesión</button>
+      <h2>Panel de Administración</h2>
+      <p>Bienvenido, esta es la vista de administrador. Aquí puedes importar CSV y ver archivos.</p>
+
+      <div class="form-section">
+        <input type="file" id="fileInput" accept=".csv"><br>
+        <input type="text" id="nombreArchivo" placeholder="Nombre archivo"><br>
+        <input type="text" id="descripcion" placeholder="Descripción"><br>
+        <button id="uploadBtn">Subir CSV</button>
+        <p id="status" aria-live="polite"></p>
+      </div>
+
+      <h3>Archivos Cargados</h3>
+      <table id="archivosTable" aria-describedby="status">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Descripción</th>
+            <th>Fecha Cargada</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Panel de accesibilidad -->
+  <div id="accessibilityPanel" class="accessibility-panel" aria-hidden="false">
+    <button id="accessibilityToggle" class="accessibility-btn" aria-expanded="false" aria-controls="accessibilityOptions">⚙️</button>
+    <div id="accessibilityOptions" class="accessibility-options hidden" role="dialog" aria-label="Opciones de accesibilidad">
+      <button id="darkToggle" type="button">🌙 Modo oscuro</button>
+      <button id="increaseText" type="button">A+</button>
+      <button id="decreaseText" type="button">A-</button>
+      <button id="resetText" type="button">A=</button>
     </div>
   </div>
 
-  <!-- Panel de accesibilidad -->
-  <div id="accessibilityPanel" class="accessibility-panel">
-    <button id="accessibilityToggle" class="accessibility-btn">⚙️</button>
-    <div id="accessibilityOptions" class="accessibility-options hidden">
-      <button id="darkToggle">🌙 Modo oscuro</button>
-      <button id="increaseText">A+</button>
-      <button id="decreaseText">A-</button>
-      <button id="resetText">A=</button>
+  <!-- Modal de confirmación -->
+  <div id="modal-confirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-hidden="true">
+    <div class="modal-content">
+      <h3 id="modal-title">Confirmar eliminación</h3>
+      <p id="modal-message">¿Seguro que deseas eliminar este archivo?</p>
+      <div class="modal-buttons">
+        <button id="btn-cancelar" type="button">Cancelar</button>
+        <button id="btn-confirmar" type="button">Eliminar</button>
+      </div>
     </div>
   </div>
 
