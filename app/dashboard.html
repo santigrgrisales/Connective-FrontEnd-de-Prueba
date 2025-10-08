@@ -759,6 +759,439 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
 })();
 
 </script>
+<!-- ==========================
+     CHATBOT FLOATING WIDGET
+     Pegar exactamente antes del cierre </body>
+     ========================== -->
+<style>
+  /* estilos complementarios que usan clases de Tailwind + CSS puro */
+  .chat-fab {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 60;
+    width: 56px;
+    height: 56px;
+    border-radius: 9999px;
+    background-color: #4f46e5; /* indigo-600 */
+    color: white;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow: 0 10px 20px rgba(15,23,42,0.15);
+    cursor: pointer;
+  }
+  .chat-panel {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 6.25rem;
+    z-index: 60;
+    width: 22rem; /* 352px */
+    max-height: 72vh;
+    background: white;
+    border-radius: 0.75rem;
+    box-shadow: 0 20px 40px rgba(2,6,23,0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  .chat-header { padding: 0.5rem 0.75rem; border-bottom: 1px solid #eef2ff; display:flex; align-items:center; justify-content:space-between; gap: 0.5rem; }
+  .chat-body { padding: 0.75rem; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:0.5rem; }
+  .chat-input { padding: 0.5rem; border-top: 1px solid #f3f4f6; display:flex; gap:0.5rem; align-items:center; }
+  .chat-msg-user { align-self: flex-end; background:#eef2ff; color:#1f2937; padding:0.5rem 0.75rem; border-radius:0.5rem; max-width: 85%; font-size:0.875rem; }
+  .chat-msg-bot { align-self: flex-start; background:#f8fafc; color:#0f172a; padding:0.5rem 0.75rem; border-radius:0.5rem; max-width: 85%; font-size:0.875rem; }
+  .chat-meta { font-size: 0.72rem; color:#6b7280; margin-top:0.25rem; }
+  .btn-small { padding: 0.35rem 0.6rem; border-radius:0.375rem; font-size:0.8rem; cursor:pointer; }
+  .btn-retry { background:#fef3f2; color:#b91c1c; border: 1px solid #fecaca; }
+  .btn-disabled { opacity:0.5; cursor:not-allowed; }
+  .error-banner { background:#fff1f2; color:#9f1239; padding:0.5rem 0.75rem; border-radius:0.375rem; font-size:0.85rem; margin-bottom:0.5rem; border:1px solid #fecaca;}
+  .typing-dots span { display:inline-block; width:6px; height:6px; margin:0 2px; background:#9ca3af; border-radius:50%; animation: chat-bounce 0.8s infinite; }
+  .typing-dots span:nth-child(2) { animation-delay:0.12s; }
+  .typing-dots span:nth-child(3) { animation-delay:0.24s; }
+  @keyframes chat-bounce { 0% { transform: translateY(0);} 50% { transform: translateY(-6px);} 100% { transform: translateY(0);} }
+</style>
+
+<!-- FAB -->
+<div id="chatFab" class="chat-fab" role="button" aria-label="Abrir ayuda">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+</div>
+
+<!-- PANEL (hidden por defecto) -->
+<div id="chatPanel" class="chat-panel hidden" role="dialog" aria-label="Asistente de Brecha Digital">
+  <div class="chat-header">
+    <div style="display:flex; align-items:center; gap:0.5rem;">
+      <div style="width:36px;height:36px;border-radius:999px;background:#eef2ff;color:#3730a3;display:flex;align-items:center;justify-content:center;font-weight:600;">AI</div>
+      <div style="font-weight:600;color:#0f172a;font-size:0.95rem;">Asistente de Brecha Digital</div>
+    </div>
+    <div style="display:flex; gap:0.5rem; align-items:center;">
+      <button id="clearChatBtn" class="text-xs text-gray-500 hover:text-gray-700" title="Limpiar historial">Limpiar</button>
+      <button id="closeChatBtn" class="text-sm text-gray-400 hover:text-gray-700" title="Cerrar chat">✕</button>
+    </div>
+  </div>
+
+  <div id="chatBodyContainer" style="padding:0.75rem; overflow:hidden; display:flex; flex-direction:column;">
+    <!-- Banner de error persistente -->
+    <div id="chatErrorBanner" style="display:none;" class="error-banner">El sistema ha tenido varios intentos fallidos. Intenta más tarde.</div>
+
+    <div id="chatBody" class="chat-body" aria-live="polite" ></div>
+  </div>
+
+  <div class="chat-input">
+    <input id="chatInput" type="text" aria-label="Mensaje al asistente" class="flex-1 px-3 py-2 rounded border border-gray-200 focus:outline-none" placeholder="Pregunta sobre la región o pide recomendaciones..." />
+    <button id="sendChatBtn" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Enviar</button>
+  </div>
+</div>
+
+<script>
+/*
+  Chat widget JS
+  - Pegar este bloque antes del cierre </body>
+  - Requisitos en la página:
+      * variables globales: API_BASE, archivoId (ya están en tu Dashboard.html)
+      * fetchWithAuth(url, options) helper (si no existe se usa fallback)
+      * normalizeName, originalMetricsByName, buildFilterParams existen (se usan para contexto)
+  - Endpoint usado: `${API_BASE}/apiGpt/chat/Gemini`
+*/
+
+(function(){
+
+  const CHAT_STORAGE_KEY = `chat_history_${archivoId || 'global'}`;
+  const CHAT_API_ENDPOINT = `${API_BASE}/apiGpt/chat/Gemini`; // tu endpoint real
+  const MAX_HISTORY_MESSAGES = 30;
+  const MAX_CONSECUTIVE_FAILURES = 3;
+  const AUTO_RETRY_ONCE_DELAY_MS = 1000;
+
+  // DOM
+  const fab = document.getElementById('chatFab');
+  const panel = document.getElementById('chatPanel');
+  const bodyEl = document.getElementById('chatBody');
+  const inputEl = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('sendChatBtn');
+  const closeBtn = document.getElementById('closeChatBtn');
+  const clearBtn = document.getElementById('clearChatBtn');
+  const errorBanner = document.getElementById('chatErrorBanner');
+
+  // State
+  let chatVisible = false;
+  let isSending = false;
+  // conversation: array of messages { id, role:'user'|'assistant'|'system', content, status:'ok'|'pending'|'failed', retryCount: number, ts }
+  let conversation = [];
+  let consecutiveFailures = 0;
+
+  /* ---------- Persistence ---------- */
+  function saveConversation() {
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(conversation.slice(-MAX_HISTORY_MESSAGES)));
+    } catch (e) { console.warn('No se pudo guardar conversación', e); }
+  }
+  function loadConversation() {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      conversation = raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      conversation = [];
+    }
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderMessages() {
+    bodyEl.innerHTML = '';
+    for (const msg of conversation) {
+      const container = document.createElement('div');
+      if (msg.role === 'user') {
+        container.innerHTML = `<div class="chat-msg-user">${escapeHtml(msg.content)}</div>`;
+      } else if (msg.role === 'assistant') {
+        if (msg.status === 'pending') {
+          container.innerHTML = `<div class="chat-msg-bot"><div style="display:flex;align-items:center;gap:0.5rem;"><div>${escapeHtml(msg.content)}</div><div class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></div></div></div>`;
+        } else if (msg.status === 'failed') {
+          container.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.25rem;"><div class="chat-msg-bot" style="border:1px solid #fde2e2;background:#fff1f2;color:#9f1239;">${escapeHtml(msg.content)}</div><div style="display:flex;gap:0.5rem;"><button class="btn-small btn-retry" data-retry-id="${msg.id}">Reintentar</button><div class="chat-meta">Intentos: ${msg.retryCount}</div></div></div>`;
+        } else {
+          container.innerHTML = `<div class="chat-msg-bot">${escapeHtml(msg.content)}</div>`;
+        }
+      } else if (msg.role === 'system') {
+        // opcional: show as tiny meta
+        container.innerHTML = `<div class="chat-meta">${escapeHtml(msg.content)}</div>`;
+      }
+      bodyEl.appendChild(container);
+    }
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+    // attach retry handlers
+    Array.from(bodyEl.querySelectorAll('button.btn-retry')).forEach(b => {
+      b.onclick = (ev) => {
+        const id = ev.currentTarget.getAttribute('data-retry-id');
+        handleRetry(id);
+      };
+    });
+  }
+
+  function escapeHtml(s) {
+    if (!s && s !== 0) return '';
+    return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); });
+  }
+
+  /* ---------- Context extraction (uses existing dashboard functions/vars) ---------- */
+  function getCurrentContextSummary() {
+    // NOTE: This is best-effort and uses globals from your dashboard.
+    const regionName = document.getElementById('modalRegionName')?.textContent?.trim();
+    const regionSelected = regionName && regionName !== '';
+    let ctx = { hasRegion: !!regionSelected, regionName: null, regionMetric: null, filtersApplied: false, filtersSummary: '' };
+
+    if (regionSelected) {
+      ctx.regionName = regionName;
+      try {
+        const normalized = (window.normalizeName && window.normalizeName(regionName)) || regionName.toLowerCase();
+        if (window.originalMetricsByName && window.originalMetricsByName.get) {
+          const m = window.originalMetricsByName.get(normalized);
+          if (m) {
+            ctx.regionMetric = { indice: m.indiceDesarrollo, idRegion: m.idRegion, nameRegion: m.nameRegion };
+          }
+        }
+        const hogares = document.getElementById('modalTotalHogares')?.textContent;
+        const avgHabs = document.getElementById('modalAvgHabilidades')?.textContent;
+        const pctCosto = document.getElementById('modalBarreraCosto')?.textContent;
+        if (hogares) ctx.regionModalSnapshot = { hogares, avgHabs, pctCosto };
+      } catch(e){}
+    }
+
+    try {
+      const filters = (typeof buildFilterParams === 'function') ? buildFilterParams() : '';
+      if (filters && filters !== '') { ctx.filtersApplied = true; ctx.filtersSummary = filters; }
+    } catch(e){}
+
+    return ctx;
+  }
+
+  /* ---------- Helpers para llamar al backend ---------- */
+  function getFetchWithAuth() {
+    // devuelve función equivalente a fetchWithAuth o un fallback
+    if (typeof window.fetchWithAuth === 'function') return window.fetchWithAuth;
+    return async function(url, opts = {}) {
+      // add authorization header from localStorage token (fallback)
+      const token = localStorage.getItem('token') || '';
+      opts.headers = { ...opts.headers, 'Content-Type': opts.headers && opts.headers['Content-Type'] ? opts.headers['Content-Type'] : 'application/json; charset=utf-8', 'Accept': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' };
+      return fetch(url, opts);
+    };
+  }
+
+  const fetchAuth = getFetchWithAuth();
+
+  /* ---------- Main send flow ---------- */
+  function newId() { return String(Date.now()) + '_' + Math.floor(Math.random()*1000); }
+
+  function pushUserMessage(text) {
+    const m = { id: newId(), role: 'user', content: text, status: 'ok', retryCount: 0, ts: Date.now() };
+    conversation.push(m);
+    saveConversation();
+    renderMessages();
+    return m;
+  }
+
+  function pushAssistantPending() {
+    const m = { id: newId(), role: 'assistant', content: 'Pensando...', status: 'pending', retryCount: 0, ts: Date.now() };
+    conversation.push(m);
+    saveConversation();
+    renderMessages();
+    return m;
+  }
+
+  async function callChatBackendForMessage(userMsg, assistantPlaceholder) {
+    // build payload minimal: server will build system prompt; we send history, userMessage, context
+    const historyForPayload = conversation.filter(x => x.role !== 'system').slice(-MAX_HISTORY_MESSAGES).map(x => ({ role: x.role, content: x.content }));
+    const payload = {
+      archivoId: archivoId || null,
+      history: historyForPayload,
+      userMessage: userMsg,
+      context: getCurrentContextSummary()
+    };
+
+    try {
+      const res = await fetchAuth(CHAT_API_ENDPOINT, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      // If unauthorized/forbidden: surface message
+      if (!res.ok) {
+        const txt = await res.text().catch(()=> '');
+        const errMsg = `Error ${res.status} ${txt ? '- '+txt : ''}`;
+        throw new Error(errMsg);
+      }
+
+      const json = await res.json();
+      return { success: true, json };
+    } catch (err) {
+      return { success: false, error: err };
+    }
+  }
+
+  async function sendUserText(userText) {
+    if (isSending) return;
+    if (!userText || userText.trim() === '') return;
+
+    isSending = true;
+    sendBtn.disabled = true;
+
+    // push user and placeholder assistant
+    pushUserMessage(userText);
+    const placeholder = pushAssistantPending();
+
+    // single attempt + auto retry once
+    const attempt = async (attemptNumber) => {
+      const result = await callChatBackendForMessage(userText, placeholder);
+      if (result.success) {
+        const assistantText = (result.json && (result.json.reply || result.json.content || result.json.message)) || 'No se recibió respuesta.';
+        // replace placeholder with actual assistant message
+        placeholder.content = assistantText;
+        placeholder.status = 'ok';
+        placeholder.ts = Date.now();
+        saveConversation();
+        consecutiveFailures = 0;
+        renderMessages();
+        return true;
+      } else {
+        // mark placeholder as failed if last attempt
+        placeholder.retryCount = (placeholder.retryCount || 0) + 1;
+        // if this was first attempt, try one auto-retry
+        if (attemptNumber === 1) {
+          // wait a little then retry once
+          await new Promise(r => setTimeout(r, AUTO_RETRY_ONCE_DELAY_MS));
+          return await attempt(2);
+        } else {
+          // final failure -> mark it failed and expose retry button
+          placeholder.status = 'failed';
+          placeholder.content = 'Error al comunicarse con el servicio. Puedes reintentar.';
+          saveConversation();
+          consecutiveFailures++;
+          renderMessages();
+          return false;
+        }
+      }
+    };
+
+    try {
+      await attempt(1);
+    } finally {
+      isSending = false;
+      sendBtn.disabled = false;
+      // show global banner if too many failures
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        errorBanner.style.display = 'block';
+        inputEl.disabled = true;
+        sendBtn.classList.add('btn-disabled');
+      } else {
+        errorBanner.style.display = 'none';
+        inputEl.disabled = false;
+        sendBtn.classList.remove('btn-disabled');
+      }
+    }
+  }
+
+  /* ---------- Retry handling for failed assistant messages ---------- */
+  async function handleRetry(assistantId) {
+    // find the failed assistant message and the preceding user message (simple heuristic: user message before the assistant)
+    const idx = conversation.findIndex(m => m.id === assistantId);
+    if (idx === -1) return;
+    const ass = conversation[idx];
+    // previous user message:
+    let prevUser = null;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (conversation[i].role === 'user') { prevUser = conversation[i]; break; }
+    }
+    if (!prevUser) return;
+
+    // set pending
+    ass.status = 'pending';
+    ass.content = 'Reintentando...';
+    saveConversation();
+    renderMessages();
+
+    // call again
+    const result = await callChatBackendForMessage(prevUser.content, ass);
+    if (result.success) {
+      ass.content = (result.json && (result.json.reply || result.json.content || result.json.message)) || 'No se recibió respuesta.';
+      ass.status = 'ok';
+      ass.retryCount = (ass.retryCount || 0);
+      consecutiveFailures = 0;
+      saveConversation();
+      renderMessages();
+    } else {
+      ass.status = 'failed';
+      ass.retryCount = (ass.retryCount || 0) + 1;
+      ass.content = 'Reintento fallido. Puedes intentar de nuevo.';
+      consecutiveFailures++;
+      saveConversation();
+      renderMessages();
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        errorBanner.style.display = 'block';
+        inputEl.disabled = true;
+        sendBtn.classList.add('btn-disabled');
+      }
+    }
+  }
+
+  /* ---------- UI actions ---------- */
+  function openChat() {
+    panel.classList.remove('hidden');
+    chatVisible = true;
+    loadConversation();
+    renderMessages();
+    setTimeout(()=>inputEl.focus(), 120);
+  }
+  function closeChat() {
+    panel.classList.add('hidden');
+    chatVisible = false;
+  }
+
+  // Events
+  fab.addEventListener('click', () => {
+    if (!chatVisible) openChat();
+    else closeChat();
+  });
+  closeBtn.addEventListener('click', closeChat);
+  clearBtn.addEventListener('click', () => {
+    conversation = [];
+    saveConversation();
+    renderMessages();
+    errorBanner.style.display = 'none';
+    consecutiveFailures = 0;
+    inputEl.disabled = false;
+    sendBtn.classList.remove('btn-disabled');
+  });
+
+  sendBtn.addEventListener('click', () => {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = '';
+    sendUserText(text);
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
+
+  // initial load
+  loadConversation();
+  renderMessages();
+  // start minimized (do nothing; FAB visible)
+  // expose small API
+  window.dashboardChat = window.dashboardChat || {};
+  window.dashboardChat.open = openChat;
+  window.dashboardChat.close = closeChat;
+  window.dashboardChat.pushSystemNote = (text) => { conversation.push({id:newId(), role:'system', content:text, status:'ok', ts:Date.now()}); saveConversation(); renderMessages(); };
+  window.dashboardChat.addAssistantMessage = (text) => { conversation.push({id:newId(), role:'assistant', content:text, status:'ok', ts:Date.now()}); saveConversation(); renderMessages(); };
+
+})();
+</script>
+<!-- ==========================
+     FIN CHATBOT FLOATING WIDGET
+     ========================== -->
+
 </body>
 </html>
 
