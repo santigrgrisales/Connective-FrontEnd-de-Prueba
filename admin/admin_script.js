@@ -1,11 +1,16 @@
 const API_BASE = 'http://localhost:8081';
 const token = localStorage.getItem('token');
 
+// Elementos del formulario
 const fileInput = document.getElementById("fileInput");
 const uploadBtn = document.getElementById("uploadBtn");
 const nombreArchivo = document.getElementById("nombreArchivo");
 const descripcion = document.getElementById("descripcion");
 const statusEl = document.getElementById("status");
+
+// Elementos del Modal de Éxito
+const successModal = document.getElementById('modal-success');
+const btnOk = document.getElementById('btn-ok');
 
 
 // ------------------ UTIL: logout btn hookup ------------------
@@ -16,12 +21,42 @@ if (logoutBtn) {
   });
 }
 
+// === LIMPIAR FORMULARIO ===
+function resetForm() {
+  fileInput.value = '';
+  nombreArchivo.value = '';
+  descripcion.value = '';
+  statusEl.textContent = '';
+}
+
+// === MOSTRAR/OCULTAR POPUP DE ÉXITO ===
+function showSuccessPopup() {
+  if (successModal) {
+    successModal.classList.remove('hidden');
+    successModal.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function hideSuccessPopup() {
+  if (successModal) {
+    successModal.classList.add('hidden');
+    successModal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+if (btnOk) {
+  btnOk.addEventListener('click', hideSuccessPopup);
+}
+
+
 // === SUBIR ARCHIVO ===
 uploadBtn.addEventListener("click", async () => {
   if (fileInput.files.length === 0) {
     statusEl.innerText = "Por favor selecciona un archivo CSV";
     return;
   }
+  
+  statusEl.innerText = "Subiendo archivo...";
 
   const formData = new FormData();
   formData.append("file", fileInput.files[0]);
@@ -41,9 +76,13 @@ uploadBtn.addEventListener("click", async () => {
       return;
     }
 
-    const data = await response.json();
-    statusEl.innerText = "Subida exitosa: " + JSON.stringify(data);
-    cargarArchivos();
+    await response.json();
+    
+    // --- Lógica de éxito ---
+    showSuccessPopup(); // Muestra el pop-up de éxito
+    resetForm();        // Limpia el formulario
+    cargarArchivos();   // Recarga la lista de archivos
+    
   } catch (err) {
     statusEl.innerText = "Error en la conexión: " + err.message;
   }
@@ -209,4 +248,3 @@ resetText.addEventListener('click', () => {
   body.style.fontSize = '1em';
   localStorage.setItem('fontSize', 1);
 });
-
