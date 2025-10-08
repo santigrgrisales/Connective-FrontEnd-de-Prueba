@@ -759,6 +759,7 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
 })();
 
 </script>
+
 <!-- ==========================
      CHATBOT FLOATING WIDGET
      Pegar exactamente antes del cierre </body>
@@ -780,6 +781,10 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
     justify-content:center;
     box-shadow: 0 10px 20px rgba(15,23,42,0.15);
     cursor: pointer;
+    transition: transform 0.2s ease-in-out;
+  }
+  .chat-fab:hover {
+    transform: scale(1.1);
   }
   .chat-panel {
     position: fixed;
@@ -795,13 +800,20 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
     flex-direction: column;
     overflow: hidden;
     font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    transform-origin: bottom right;
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+  }
+  .chat-panel.hidden {
+    transform: scale(0.9);
+    opacity: 0;
+    pointer-events: none;
   }
   .chat-header { padding: 0.5rem 0.75rem; border-bottom: 1px solid #eef2ff; display:flex; align-items:center; justify-content:space-between; gap: 0.5rem; }
   .chat-body { padding: 0.75rem; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:0.5rem; }
   .chat-input { padding: 0.5rem; border-top: 1px solid #f3f4f6; display:flex; gap:0.5rem; align-items:center; }
-  .chat-msg-user { align-self: flex-end; background:#eef2ff; color:#1f2937; padding:0.5rem 0.75rem; border-radius:0.5rem; max-width: 85%; font-size:0.875rem; }
-  .chat-msg-bot { align-self: flex-start; background:#f8fafc; color:#0f172a; padding:0.5rem 0.75rem; border-radius:0.5rem; max-width: 85%; font-size:0.875rem; }
-  .chat-meta { font-size: 0.72rem; color:#6b7280; margin-top:0.25rem; }
+  .chat-msg-user { align-self: flex-end; background:#eef2ff; color:#1f2937; padding:0.5rem 0.75rem; border-radius:0.5rem; max-width: 85%; font-size:0.875rem; word-wrap: break-word; }
+  .chat-msg-bot { align-self: flex-start; background:#f8fafc; color:#0f172a; padding:0.5rem 0.75rem; border-radius:0.5rem; max-width: 85%; font-size:0.875rem; word-wrap: break-word; }
+  .chat-meta { font-size: 0.72rem; color:#6b7280; margin-top:0.25rem; text-align: center; padding: 0 0.5rem; }
   .btn-small { padding: 0.35rem 0.6rem; border-radius:0.375rem; font-size:0.8rem; cursor:pointer; }
   .btn-retry { background:#fef3f2; color:#b91c1c; border: 1px solid #fecaca; }
   .btn-disabled { opacity:0.5; cursor:not-allowed; }
@@ -819,7 +831,7 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
   </svg>
 </div>
 
-<!-- PANEL (hidden por defecto) -->
+<!-- PANEL (inicia con la clase 'hidden') -->
 <div id="chatPanel" class="chat-panel hidden" role="dialog" aria-label="Asistente de Brecha Digital">
   <div class="chat-header">
     <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -840,26 +852,25 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
   </div>
 
   <div class="chat-input">
-    <input id="chatInput" type="text" aria-label="Mensaje al asistente" class="flex-1 px-3 py-2 rounded border border-gray-200 focus:outline-none" placeholder="Pregunta sobre la región o pide recomendaciones..." />
+    <input id="chatInput" type="text" aria-label="Mensaje al asistente" class="flex-1 px-3 py-2 rounded border border-gray-200 focus:outline-none" placeholder="Pregunta sobre los datos..." />
     <button id="sendChatBtn" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Enviar</button>
   </div>
 </div>
 
 <script>
 /*
-  Chat widget JS
-  - Pegar este bloque antes del cierre </body>
+  Chat widget JS (CORREGIDO)
   - Requisitos en la página:
-      * variables globales: API_BASE, archivoId (ya están en tu Dashboard.html)
-      * fetchWithAuth(url, options) helper (si no existe se usa fallback)
-      * normalizeName, originalMetricsByName, buildFilterParams existen (se usan para contexto)
+      * variables globales: API_BASE, archivoId
+      * Funciones globales: normalizeName, originalMetricsByName
+      * Gráficas globales: tipoUsoChart, ingresoChart
   - Endpoint usado: `${API_BASE}/apiGpt/chat/Gemini`
 */
 
 (function(){
 
   const CHAT_STORAGE_KEY = `chat_history_${archivoId || 'global'}`;
-  const CHAT_API_ENDPOINT = `${API_BASE}/apiGpt/chat/Gemini`; // tu endpoint real
+  const CHAT_API_ENDPOINT = `${API_BASE}/apiGpt/chat/Gemini`;
   const MAX_HISTORY_MESSAGES = 30;
   const MAX_CONSECUTIVE_FAILURES = 3;
   const AUTO_RETRY_ONCE_DELAY_MS = 1000;
@@ -877,7 +888,6 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
   // State
   let chatVisible = false;
   let isSending = false;
-  // conversation: array of messages { id, role:'user'|'assistant'|'system', content, status:'ok'|'pending'|'failed', retryCount: number, ts }
   let conversation = [];
   let consecutiveFailures = 0;
 
@@ -899,6 +909,16 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
   /* ---------- Rendering ---------- */
   function renderMessages() {
     bodyEl.innerHTML = '';
+    if (conversation.length === 0) {
+      conversation.push({
+        id: 'initial_msg',
+        role: 'assistant',
+        content: '¡Hola! Soy tu asistente. Pregúntame sobre los datos que ves en el dashboard para obtener análisis y recomendaciones.',
+        status: 'ok',
+        ts: Date.now()
+      });
+    }
+
     for (const msg of conversation) {
       const container = document.createElement('div');
       if (msg.role === 'user') {
@@ -907,18 +927,17 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
         if (msg.status === 'pending') {
           container.innerHTML = `<div class="chat-msg-bot"><div style="display:flex;align-items:center;gap:0.5rem;"><div>${escapeHtml(msg.content)}</div><div class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></div></div></div>`;
         } else if (msg.status === 'failed') {
-          container.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.25rem;"><div class="chat-msg-bot" style="border:1px solid #fde2e2;background:#fff1f2;color:#9f1239;">${escapeHtml(msg.content)}</div><div style="display:flex;gap:0.5rem;"><button class="btn-small btn-retry" data-retry-id="${msg.id}">Reintentar</button><div class="chat-meta">Intentos: ${msg.retryCount}</div></div></div>`;
+          container.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.25rem;"><div class="chat-msg-bot" style="border:1px solid #fde2e2;background:#fff1f2;color:#9f1239;">${escapeHtml(msg.content)}</div><div style="display:flex;gap:0.5rem;"><button class="btn-small btn-retry" data-retry-id="${msg.id}">Reintentar</button><div class="chat-meta">Intentos: ${msg.retryCount || 1}</div></div></div>`;
         } else {
           container.innerHTML = `<div class="chat-msg-bot">${escapeHtml(msg.content)}</div>`;
         }
       } else if (msg.role === 'system') {
-        // opcional: show as tiny meta
         container.innerHTML = `<div class="chat-meta">${escapeHtml(msg.content)}</div>`;
       }
       bodyEl.appendChild(container);
     }
     bodyEl.scrollTop = bodyEl.scrollHeight;
-    // attach retry handlers
+    // Attach retry handlers
     Array.from(bodyEl.querySelectorAll('button.btn-retry')).forEach(b => {
       b.onclick = (ev) => {
         const id = ev.currentTarget.getAttribute('data-retry-id');
@@ -932,56 +951,91 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
     return String(s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); });
   }
 
-  /* ---------- Context extraction (uses existing dashboard functions/vars) ---------- */
+  /* ---------- Context extraction (MEJORADO) ---------- */
   function getCurrentContextSummary() {
-    // NOTE: This is best-effort and uses globals from your dashboard.
-    const regionName = document.getElementById('modalRegionName')?.textContent?.trim();
-    const regionSelected = regionName && regionName !== '';
-    let ctx = { hasRegion: !!regionSelected, regionName: null, regionMetric: null, filtersApplied: false, filtersSummary: '' };
+    const modal = document.getElementById('regionDetailModal');
+    const isModalVisible = modal && !modal.classList.contains('hidden');
+    let summaryLines = [];
+    let contextObject = { hasRegion: false, regionName: null, regionMetric: null };
 
-    if (regionSelected) {
-      ctx.regionName = regionName;
-      try {
-        const normalized = (window.normalizeName && window.normalizeName(regionName)) || regionName.toLowerCase();
-        if (window.originalMetricsByName && window.originalMetricsByName.get) {
-          const m = window.originalMetricsByName.get(normalized);
-          if (m) {
-            ctx.regionMetric = { indice: m.indiceDesarrollo, idRegion: m.idRegion, nameRegion: m.nameRegion };
-          }
-        }
-        const hogares = document.getElementById('modalTotalHogares')?.textContent;
-        const avgHabs = document.getElementById('modalAvgHabilidades')?.textContent;
-        const pctCosto = document.getElementById('modalBarreraCosto')?.textContent;
-        if (hogares) ctx.regionModalSnapshot = { hogares, avgHabs, pctCosto };
-      } catch(e){}
+    // 1. Obtener filtros globales
+    const filters = [];
+    const edadSelect = document.getElementById('fEdad');
+    if (edadSelect.value) filters.push(`Rango de Edad: ${edadSelect.options[edadSelect.selectedIndex].text}`);
+    const generoSelect = document.getElementById('fGenero');
+    if (generoSelect.value) filters.push(`Género: ${generoSelect.value}`);
+    const ingresoSelect = document.getElementById('fIngreso');
+    if (ingresoSelect.value) filters.push(`Categoría de Ingreso: ${ingresoSelect.value}`);
+    const habsSelect = document.getElementById('fMinHabs');
+    if (habsSelect.value) filters.push(`Habilidades Digitales Mínimas: ${habsSelect.options[habsSelect.selectedIndex].text}`);
+    if (document.getElementById('fBarreraCosto').checked) filters.push('Solo hogares que reportan el costo como barrera de acceso');
+
+    if (filters.length > 0) {
+        summaryLines.push(`Se aplican los siguientes filtros: ${filters.join(', ')}.`);
+    } else {
+        summaryLines.push('Se están visualizando los datos generales sin filtros específicos.');
     }
 
-    try {
-      const filters = (typeof buildFilterParams === 'function') ? buildFilterParams() : '';
-      if (filters && filters !== '') { ctx.filtersApplied = true; ctx.filtersSummary = filters; }
-    } catch(e){}
+    // 2. Obtener datos del modal si está visible
+    if (isModalVisible) {
+        const regionName = document.getElementById('modalRegionName')?.textContent.trim();
+        if (regionName) {
+            contextObject.hasRegion = true;
+            contextObject.regionName = regionName;
 
-    return ctx;
+            const indice = document.getElementById('modalIndice')?.textContent.trim();
+            const totalHogares = document.getElementById('modalTotalHogares')?.textContent.trim();
+            const avgHabilidades = document.getElementById('modalAvgHabilidades')?.textContent.trim();
+            const barreraCosto = document.getElementById('modalBarreraCosto')?.textContent.trim();
+            
+            summaryLines.push(`\nInformación detallada en pantalla para ${regionName}:`);
+            if (indice) summaryLines.push(`- Índice de Desarrollo Digital: ${indice}.`);
+            if (totalHogares) summaryLines.push(`- Hogares analizados (con filtros actuales): ${totalHogares}.`);
+            if (avgHabilidades) summaryLines.push(`- Promedio de Habilidades Digitales: ${avgHabilidades}.`);
+            if (barreraCosto) summaryLines.push(`- Barrera de costo para no tener internet: ${barreraCosto}.`);
+
+            // Extract data from charts
+            if (window.tipoUsoChart?.data) {
+                const { labels, datasets } = window.tipoUsoChart.data;
+                const usos = labels.map((label, i) => `${label}: ${datasets[0].data[i]} hogares`).join(', ');
+                if (usos) summaryLines.push(`- Principal uso de internet: ${usos}.`);
+            }
+            if (window.ingresoChart?.data) {
+                const { labels, datasets } = window.ingresoChart.data;
+                const ingresos = labels.map((label, i) => `${label}: ${datasets[0].data[i]} hogares`).join(', ');
+                if (ingresos) summaryLines.push(`- Distribución de ingresos: ${ingresos}.`);
+            }
+            
+            try {
+                const normalized = (typeof window.normalizeName === 'function' && window.normalizeName(regionName)) || regionName.toLowerCase();
+                if (window.originalMetricsByName?.get) {
+                    const m = window.originalMetricsByName.get(normalized);
+                    if (m) contextObject.regionMetric = { indice: m.indiceDesarrollo, idRegion: m.idRegion };
+                }
+            } catch (e) { console.warn("No se pudo obtener la métrica de la región para el contexto", e); }
+        }
+    }
+    
+    contextObject.screenSummary = summaryLines.join(' ');
+    return contextObject;
   }
 
   /* ---------- Helpers para llamar al backend ---------- */
   function getFetchWithAuth() {
-    // devuelve función equivalente a fetchWithAuth o un fallback
     if (typeof window.fetchWithAuth === 'function') return window.fetchWithAuth;
     return async function(url, opts = {}) {
-      // add authorization header from localStorage token (fallback)
       const token = localStorage.getItem('token') || '';
-      opts.headers = { ...opts.headers, 'Content-Type': opts.headers && opts.headers['Content-Type'] ? opts.headers['Content-Type'] : 'application/json; charset=utf-8', 'Accept': 'application/json', 'Authorization': token ? `Bearer ${token}` : '' };
+      opts.headers = { ...opts.headers, 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
       return fetch(url, opts);
     };
   }
-
   const fetchAuth = getFetchWithAuth();
 
   /* ---------- Main send flow ---------- */
   function newId() { return String(Date.now()) + '_' + Math.floor(Math.random()*1000); }
 
   function pushUserMessage(text) {
+    if (conversation[0]?.id === 'initial_msg') conversation.shift();
     const m = { id: newId(), role: 'user', content: text, status: 'ok', retryCount: 0, ts: Date.now() };
     conversation.push(m);
     saveConversation();
@@ -990,18 +1044,20 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
   }
 
   function pushAssistantPending() {
-    const m = { id: newId(), role: 'assistant', content: 'Pensando...', status: 'pending', retryCount: 0, ts: Date.now() };
+    const m = { id: newId(), role: 'assistant', content: 'Analizando...', status: 'pending', retryCount: 0, ts: Date.now() };
     conversation.push(m);
     saveConversation();
     renderMessages();
     return m;
   }
 
-  async function callChatBackendForMessage(userMsg, assistantPlaceholder) {
-    // build payload minimal: server will build system prompt; we send history, userMessage, context
-    const historyForPayload = conversation.filter(x => x.role !== 'system').slice(-MAX_HISTORY_MESSAGES).map(x => ({ role: x.role, content: x.content }));
+  async function callChatBackend(userMsg) {
+    const historyForPayload = conversation
+      .filter(x => x.role !== 'system' && x.status === 'ok')
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map(x => ({ role: x.role, content: x.content }));
+      
     const payload = {
-      archivoId: archivoId || null,
       history: historyForPayload,
       userMessage: userMsg,
       context: getCurrentContextSummary()
@@ -1012,145 +1068,102 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-
-      // If unauthorized/forbidden: surface message
       if (!res.ok) {
-        const txt = await res.text().catch(()=> '');
-        const errMsg = `Error ${res.status} ${txt ? '- '+txt : ''}`;
-        throw new Error(errMsg);
+        const txt = await res.text().catch(()=> `Error del servidor ${res.status}`);
+        throw new Error(txt);
       }
-
       const json = await res.json();
       return { success: true, json };
     } catch (err) {
       return { success: false, error: err };
     }
   }
+  
+  async function processSend(userText, assistantPlaceholder) {
+    const result = await callChatBackend(userText);
+    if (result.success) {
+      const assistantText = (result.json && (result.json.reply || result.json.content)) || 'No se recibió una respuesta válida.';
+      assistantPlaceholder.content = assistantText;
+      assistantPlaceholder.status = 'ok';
+      assistantPlaceholder.ts = Date.now();
+      saveConversation();
+      consecutiveFailures = 0;
+      renderMessages();
+      return true;
+    } else {
+      console.error("Error en API del Chat:", result.error);
+      assistantPlaceholder.retryCount = (assistantPlaceholder.retryCount || 0) + 1;
+      // Si falla, se marca como fallido para que el usuario pueda reintentar manualmente.
+      assistantPlaceholder.status = 'failed';
+      assistantPlaceholder.content = 'Error al contactar al asistente. Por favor, reintenta.';
+      saveConversation();
+      consecutiveFailures++;
+      renderMessages();
+      return false;
+    }
+  }
 
   async function sendUserText(userText) {
-    if (isSending) return;
-    if (!userText || userText.trim() === '') return;
+    if (isSending || !userText || userText.trim() === '') return;
 
     isSending = true;
     sendBtn.disabled = true;
+    sendBtn.classList.add('btn-disabled');
+    inputEl.value = '';
 
-    // push user and placeholder assistant
     pushUserMessage(userText);
     const placeholder = pushAssistantPending();
 
-    // single attempt + auto retry once
-    const attempt = async (attemptNumber) => {
-      const result = await callChatBackendForMessage(userText, placeholder);
-      if (result.success) {
-        const assistantText = (result.json && (result.json.reply || result.json.content || result.json.message)) || 'No se recibió respuesta.';
-        // replace placeholder with actual assistant message
-        placeholder.content = assistantText;
-        placeholder.status = 'ok';
-        placeholder.ts = Date.now();
-        saveConversation();
-        consecutiveFailures = 0;
-        renderMessages();
-        return true;
-      } else {
-        // mark placeholder as failed if last attempt
-        placeholder.retryCount = (placeholder.retryCount || 0) + 1;
-        // if this was first attempt, try one auto-retry
-        if (attemptNumber === 1) {
-          // wait a little then retry once
-          await new Promise(r => setTimeout(r, AUTO_RETRY_ONCE_DELAY_MS));
-          return await attempt(2);
-        } else {
-          // final failure -> mark it failed and expose retry button
-          placeholder.status = 'failed';
-          placeholder.content = 'Error al comunicarse con el servicio. Puedes reintentar.';
-          saveConversation();
-          consecutiveFailures++;
-          renderMessages();
-          return false;
-        }
-      }
-    };
-
     try {
-      await attempt(1);
+      await processSend(userText, placeholder);
     } finally {
       isSending = false;
       sendBtn.disabled = false;
-      // show global banner if too many failures
+      sendBtn.classList.remove('btn-disabled');
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         errorBanner.style.display = 'block';
         inputEl.disabled = true;
         sendBtn.classList.add('btn-disabled');
-      } else {
-        errorBanner.style.display = 'none';
-        inputEl.disabled = false;
-        sendBtn.classList.remove('btn-disabled');
       }
     }
   }
 
-  /* ---------- Retry handling for failed assistant messages ---------- */
+  /* ---------- Retry handling ---------- */
   async function handleRetry(assistantId) {
-    // find the failed assistant message and the preceding user message (simple heuristic: user message before the assistant)
     const idx = conversation.findIndex(m => m.id === assistantId);
-    if (idx === -1) return;
-    const ass = conversation[idx];
-    // previous user message:
-    let prevUser = null;
-    for (let i = idx - 1; i >= 0; i--) {
-      if (conversation[i].role === 'user') { prevUser = conversation[i]; break; }
-    }
-    if (!prevUser) return;
+    if (idx < 1) return;
+    
+    const failedMsg = conversation[idx];
+    const lastUserMsg = conversation.slice(0, idx).reverse().find(m => m.role === 'user');
+    
+    if (!lastUserMsg) return;
 
-    // set pending
-    ass.status = 'pending';
-    ass.content = 'Reintentando...';
+    failedMsg.status = 'pending';
+    failedMsg.content = 'Reintentando...';
     saveConversation();
     renderMessages();
 
-    // call again
-    const result = await callChatBackendForMessage(prevUser.content, ass);
-    if (result.success) {
-      ass.content = (result.json && (result.json.reply || result.json.content || result.json.message)) || 'No se recibió respuesta.';
-      ass.status = 'ok';
-      ass.retryCount = (ass.retryCount || 0);
-      consecutiveFailures = 0;
-      saveConversation();
-      renderMessages();
-    } else {
-      ass.status = 'failed';
-      ass.retryCount = (ass.retryCount || 0) + 1;
-      ass.content = 'Reintento fallido. Puedes intentar de nuevo.';
-      consecutiveFailures++;
-      saveConversation();
-      renderMessages();
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        errorBanner.style.display = 'block';
-        inputEl.disabled = true;
-        sendBtn.classList.add('btn-disabled');
-      }
-    }
+    await processSend(lastUserMsg.content, failedMsg);
   }
 
   /* ---------- UI actions ---------- */
   function openChat() {
     panel.classList.remove('hidden');
     chatVisible = true;
-    loadConversation();
-    renderMessages();
-    setTimeout(()=>inputEl.focus(), 120);
+    setTimeout(() => inputEl.focus(), 300); // Dar tiempo a la transición
   }
   function closeChat() {
     panel.classList.add('hidden');
     chatVisible = false;
   }
 
-  // Events
+  // Event Listeners
   fab.addEventListener('click', () => {
-    if (!chatVisible) openChat();
-    else closeChat();
+    chatVisible ? closeChat() : openChat();
   });
+  
   closeBtn.addEventListener('click', closeChat);
+
   clearBtn.addEventListener('click', () => {
     conversation = [];
     saveConversation();
@@ -1162,10 +1175,7 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
   });
 
   sendBtn.addEventListener('click', () => {
-    const text = inputEl.value.trim();
-    if (!text) return;
-    inputEl.value = '';
-    sendUserText(text);
+    sendUserText(inputEl.value.trim());
   });
 
   inputEl.addEventListener('keydown', (e) => {
@@ -1175,22 +1185,28 @@ document.getElementById('regionDetailModal').addEventListener('click', (e) => {
     }
   });
 
-  // initial load
+  // Initial load
   loadConversation();
   renderMessages();
-  // start minimized (do nothing; FAB visible)
-  // expose small API
-  window.dashboardChat = window.dashboardChat || {};
-  window.dashboardChat.open = openChat;
-  window.dashboardChat.close = closeChat;
-  window.dashboardChat.pushSystemNote = (text) => { conversation.push({id:newId(), role:'system', content:text, status:'ok', ts:Date.now()}); saveConversation(); renderMessages(); };
-  window.dashboardChat.addAssistantMessage = (text) => { conversation.push({id:newId(), role:'assistant', content:text, status:'ok', ts:Date.now()}); saveConversation(); renderMessages(); };
+  closeChat(); // Asegurarse de que el chat inicie cerrado
+
+  // Expose API para control externo si es necesario
+  window.dashboardChat = {
+    open: openChat,
+    close: closeChat,
+    pushSystemNote: (text) => {
+      conversation.push({id:newId(), role:'system', content:text, status:'ok', ts:Date.now()});
+      saveConversation();
+      renderMessages();
+    }
+  };
 
 })();
 </script>
 <!-- ==========================
      FIN CHATBOT FLOATING WIDGET
      ========================== -->
+
 
 </body>
 </html>
