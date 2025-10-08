@@ -145,7 +145,7 @@ body.dark button {
   color: #fff;
 }
 
-/* === MODAL DE CONFIRMACIÓN === */
+/* === MODALES === */
 .modal {
   position: fixed;
   inset: 0;
@@ -201,6 +201,13 @@ body.dark button {
   color: #fff;
 }
 
+#btn-ok {
+  background: var(--primary, #005fa3);
+  color: #fff;
+  width: 100px;
+}
+
+
 #btn-cancelar:hover {
   background: #bbb;
 }
@@ -208,6 +215,11 @@ body.dark button {
 #btn-confirmar:hover {
   background: #c0392b;
 }
+
+#btn-ok:hover {
+    background: var(--primary-hover, #004c82);
+}
+
 
 /* Colores para modo oscuro */
 body.dark-mode .modal-content {
